@@ -81,7 +81,7 @@ with
                 then null
                 else cast(raw_recipient_count as int)
             end as recipient_count
-        from {{ ref("stg_amplitude_ingestion__events") }}
+        from {{ ref("stg_amplitude__events") }}
         where
             user_id is not null
             and try_cast(user_id as bigint) is not null

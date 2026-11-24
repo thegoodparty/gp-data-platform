@@ -27,7 +27,7 @@ with
                 'campaign',
                 user_properties:initial_utm_campaign::string
             ) as utm
-        from {{ ref("stg_amplitude_ingestion__events") }}
+        from {{ ref("stg_amplitude__events") }}
         where
             try_cast(user_id as bigint) is not null
             -- A blank source names no channel, so it is no touch.

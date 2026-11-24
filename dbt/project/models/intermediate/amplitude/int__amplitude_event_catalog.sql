@@ -27,7 +27,7 @@ with
             count_if(
                 cast(event_time as date) >= date_sub(current_date(), 30)
             ) as event_count_30d
-        from {{ ref("stg_amplitude_ingestion__events") }}
+        from {{ ref("stg_amplitude__events") }}
         where event_type is not null
         group by event_type
     ),

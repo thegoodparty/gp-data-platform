@@ -46,7 +46,7 @@ __all__ = [
 # Fully-qualified prod table paths, hardcoded for the same reason as
 # win_analysis.py: this module runs outside dbt (notebooks / ad-hoc), where
 # ``ref()`` can resolve to stale dev artifacts. Repoint for a dev/test catalog.
-EVENTS_TABLE = "goodparty_data_catalog.dbt.stg_amplitude_ingestion__events"
+EVENTS_TABLE = "goodparty_data_catalog.dbt.stg_amplitude__events"
 USERS_SERVE_BASE = "goodparty_data_catalog.mart_analytics.users_serve_base"
 EVENT_TAXONOMY = "goodparty_data_catalog.dbt.int__amplitude_event_catalog"
 

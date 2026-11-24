@@ -1,6 +1,6 @@
 -- Array columns land as arrays; Airbyte delivered them as JSON text.
 with
-    source as (select * from {{ source("amplitude_ingestion", "cohorts") }}),
+    source as (select * from {{ source("amplitude", "cohorts") }}),
     renamed as (
         select
             {{ adapter.quote("id") }},

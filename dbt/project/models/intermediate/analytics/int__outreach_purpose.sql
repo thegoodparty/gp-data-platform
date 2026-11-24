@@ -59,7 +59,7 @@ with
                 get_json_object(cast(event_properties as string), '$.purpose'),
                 event_time
             ) as purpose
-        from {{ ref("stg_amplitude_ingestion__events") }}
+        from {{ ref("stg_amplitude__events") }}
         where
             event_type
             in ('Outreach - Campaign Created', 'Outreach - Campaign Completed')

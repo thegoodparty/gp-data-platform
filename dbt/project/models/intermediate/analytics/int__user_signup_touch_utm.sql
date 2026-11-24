@@ -21,7 +21,7 @@ with
                 'campaign',
                 event_properties:utm_campaign_last::string
             ) as utm
-        from {{ ref("stg_amplitude_ingestion__events") }}
+        from {{ ref("stg_amplitude__events") }}
         where
             event_type = 'Onboarding - Registration Completed'
             and try_cast(user_id as bigint) is not null

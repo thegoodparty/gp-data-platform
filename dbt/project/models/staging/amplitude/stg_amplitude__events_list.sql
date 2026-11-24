@@ -1,5 +1,5 @@
 with
-    source as (select * from {{ source("amplitude_ingestion", "events_list") }}),
+    source as (select * from {{ source("amplitude", "events_list") }}),
     renamed as (
         select
             -- The new export carries no numeric id; name always equalled value.

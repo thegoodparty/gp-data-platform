@@ -13,7 +13,7 @@
     than win and serve are skipped.
 */
 with
-    events as (select * from {{ ref("stg_amplitude_ingestion__events") }}),
+    events as (select * from {{ ref("stg_amplitude__events") }}),
 
     catalog as (select * from {{ ref("int__amplitude_event_catalog") }}),
 

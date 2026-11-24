@@ -865,9 +865,9 @@ sources:
         config:
           freshness: null
 
-  - name: amplitude_ingestion
+  - name: amplitude
     database: raw
-    schema: amplitude_ingestion
+    schema: amplitude
     description: >
       Amplitude export landed by the Databricks Lakeflow Connect connector, which
       replaced the paused Airbyte sync. Object-valued columns arrive as

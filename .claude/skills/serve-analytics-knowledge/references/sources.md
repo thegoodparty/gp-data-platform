@@ -39,7 +39,7 @@ For most Serve analyses, start with one of these:
 - **`mart_analytics.users_serve_activity`** (wraps `dbt.int__amplitude_serve_activity`) —
   user × month poll-dashboard views. **Poll-anchored, continuity only** — see the collapse
   caveat in [methodology_defaults.md](methodology_defaults.md) before using it.
-- **`dbt.stg_amplitude_ingestion__events`** — raw event grain; the source for the
+- **`dbt.stg_amplitude__events`** — raw event grain; the source for the
   broad-engagement working set built by `analytics/lib/serve_analysis.py`.
 
 ## Pledge instruments (two, asymmetric)

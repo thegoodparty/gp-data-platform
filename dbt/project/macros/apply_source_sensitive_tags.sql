@@ -93,7 +93,7 @@
         ("goodparty_data_catalog", "dbt_source"),
         ("segment_storage", "gp_api"),
         ("segment_storage", "web_app"),
-        ("raw", "amplitude_ingestion"),
+        ("raw", "amplitude"),
     ] -%}
     {{ return(scope) }}
 {% endmacro %}

@@ -241,11 +241,11 @@ def build_probes(
         ),
         (
             "A product",
-            "raw.amplitude_ingestion.events",
+            "raw.amplitude.events",
             # The Lakeflow Connect export that replaced the Airbyte stream;
             # user_properties is a map here.
             f"""select count(*) as n
-                from raw.amplitude_ingestion.events
+                from raw.amplitude.events
                 where user_id = {lit(gp_api_user_id)}
                    or user_id in (
                         select cast(id as string)

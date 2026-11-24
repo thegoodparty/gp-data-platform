@@ -107,7 +107,7 @@ ev as (
     row_number() over (
       partition by try_cast(e.user_id as bigint) order by e.event_time
     ) as rn
-  from goodparty_data_catalog.dbt.stg_amplitude_ingestion__events e
+  from goodparty_data_catalog.dbt.stg_amplitude__events e
   join win_users w
     on w.user_id = try_cast(e.user_id as bigint)
    and cast(e.event_time as date)

@@ -45,7 +45,7 @@ with
     -- Amplitude accepted the event, the nearest stand-in.
     amplitude_load as (
         select max(server_upload_time) as amplitude_loaded_at
-        from {{ ref("stg_amplitude_ingestion__events") }}
+        from {{ ref("stg_amplitude__events") }}
     ),
 
     -- HubSpot contacts carry no loader column; the engagements stream rides

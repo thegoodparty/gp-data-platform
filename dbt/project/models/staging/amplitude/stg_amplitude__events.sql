@@ -1,7 +1,7 @@
 -- Reads the Lakeflow Connect export in the raw catalog, keeping the columns and
 -- types of the Airbyte stream it replaced so downstream reads are unchanged.
 with
-    source as (select * from {{ source("amplitude_ingestion", "events") }}),
+    source as (select * from {{ source("amplitude", "events") }}),
     renamed as (
         select
             app,

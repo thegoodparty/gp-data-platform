@@ -1,7 +1,7 @@
 version: 2
 
 models:
-  - name: stg_amplitude_ingestion__active_users
+  - name: stg_amplitude__active_users
     description: "Staging model for Amplitude Active Users Counts stream - tracks daily active user counts with incremental sync"
     columns:
       - name: date
@@ -14,7 +14,7 @@ models:
         tests:
           - not_null
 
-  - name: stg_amplitude_ingestion__annotations
+  - name: stg_amplitude__annotations
     description: "Staging model for Amplitude Annotations stream - contains chart annotations and notes"
     columns:
       - name: id
@@ -35,7 +35,7 @@ models:
         tests:
           - not_null
 
-  - name: stg_amplitude_ingestion__average_session_length
+  - name: stg_amplitude__average_session_length
     description: "Staging model for Amplitude Average Session Length stream - tracks daily average session duration with incremental sync"
     columns:
       - name: date
@@ -54,7 +54,7 @@ models:
               config:
                 where: "length is not null"
 
-  - name: stg_amplitude_ingestion__cohorts
+  - name: stg_amplitude__cohorts
     description: "Staging model for Amplitude Cohorts stream - contains user cohort definitions and metadata"
     columns:
       - name: id
@@ -141,7 +141,7 @@ models:
         tests:
           - not_null
 
-  - name: stg_amplitude_ingestion__events
+  - name: stg_amplitude__events
     description: "Staging model for Amplitude Events stream - contains individual user events with incremental sync"
     columns:
       - name: app
@@ -310,7 +310,7 @@ models:
       - name: amplitude_attribution_ids
         description: "JSON array of attribution IDs"
 
-  - name: stg_amplitude_ingestion__events_list
+  - name: stg_amplitude__events_list
     description: "Staging model for Amplitude Events List stream - contains metadata about tracked events"
     columns:
       - name: id
