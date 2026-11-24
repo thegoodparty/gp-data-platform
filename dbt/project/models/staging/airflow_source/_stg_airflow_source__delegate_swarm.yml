@@ -1,0 +1,268 @@
+version: 2
+
+models:
+  - name: stg_airflow_source__delegate_swarm_session_cost
+    description: >
+      One row per delegate swarm ledger row, the newest export's observation of it. Ephemeral,
+      because it is a per-session trace of what the swarm ran and the `dbt` schema is readable
+      by every data user; it exists only as a CTE inside the marts that read it.
+
+      `cost_usd` is the swarm's own recorded cost, whatever `cost_source` says it rests on, and
+      `harness_cost_usd` is the adapter's separate figure kept for reconciliation only.
+    columns:
+      - name: id
+        description: The ledger row's own id, and the dedupe key.
+        data_tests:
+          - not_null
+          - unique
+      - name: session_id
+        description: The swarm session the cost was recorded against.
+      - name: task_id
+        description: >
+          The task the session ran for, or null for a session that ran with no task. The task
+          mart excludes nulls; the daily mart keeps them.
+      - name: agent_id
+        description: The agent's id, and the daily mart's second grain key beside its name.
+        data_tests:
+          - not_null
+      - name: agent_name
+        description: >
+          The agent's operator-set label, the only non-id text in the export. `unknown_agent`
+          is the export's stated placeholder for a cost row whose agent row is gone, which is
+          why it is never null and never filtered out here.
+        data_tests:
+          - not_null
+      - name: model
+        description: The model the swarm resolved for the session, and never blank downstream.
+        data_tests:
+          - not_null
+      - name: cost_source
+        description: >
+          How the cost was arrived at: `harness`, `pricing-table`, `unpriced` or `estimated`.
+          `unpriced` is pi's own self-reported figure, and the marts publish its share beside
+          the total rather than folding it in silently.
+      - name: kind
+        description: >
+          `harness` for a session the adapter drove, `system-one` for the swarm's own overhead.
+          Task totals keep both, because upstream's own task totals sum every row.
+      - name: cost_usd
+        description: The cost the swarm recorded for the session.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: harness_cost_usd
+        description: >
+          The adapter's own figure for the session, kept for reconciliation only. Not summed
+          into any published total.
+      - name: input_tokens
+        description: Input tokens the session used.
+      - name: output_tokens
+        description: Output tokens the session used.
+      - name: cache_read_tokens
+        description: Input tokens served from a provider-side prompt cache.
+      - name: cache_write_tokens
+        description: Input tokens written to a provider-side prompt cache.
+      - name: cache_write_5m_tokens
+        description: The five-minute component of the cache writes, where the adapter splits it.
+      - name: cache_write_1h_tokens
+        description: The one-hour component of the cache writes, where the adapter splits it.
+      - name: reasoning_output_tokens
+        description: Output tokens the model spent reasoning.
+      - name: thinking_tokens
+        description: Thinking tokens the session recorded.
+      - name: duration_ms
+        description: The session's wall clock in milliseconds.
+      - name: num_turns
+        description: Turns the session took, null where upstream records none.
+      - name: is_error
+        description: >
+          True for a session the ledger marked failed, from its 0/1 integer. A failed attempt
+          still counts toward its task's spend; the daily mart counts them separately.
+      - name: created_at
+        description: When the ledger wrote the cost row, in UTC. The daily mart's `usage_date` is its date.
+      - name: exported_at
+        description: >
+          Which export run observed this row. Stamped by the exporter, identical across one
+          file, and what orders two observations of the same ledger row.
+      - name: loaded_at
+        description: >
+          When the loader read the file this row arrived in. Identical for every row of one
+          file, which is why it cannot order two observations and `exported_at` does.
+
+  - name: stg_airflow_source__delegate_swarm_task_edge
+    description: >
+      One row per delegate swarm task, the newest export's observation of it. Ephemeral, for the
+      same reason as the cost staging beside it.
+    columns:
+      - name: task_id
+        description: The task's id, and the dedupe key.
+        data_tests:
+          - not_null
+          - unique
+      - name: parent_task_id
+        description: >
+          Context continuity: the task this one continued. Null on a root, and the fallback edge
+          when `dispatched_by_task_id` is null.
+      - name: dispatched_by_task_id
+        description: >
+          The task whose session dispatched this one. Null on a root, and preferred over
+          `parent_task_id` where both are set.
+      - name: rollup_parent_task_id
+        description: >
+          The edge the rollup follows, resolved once here so the root walk and both marts cannot
+          disagree about it.
+        data_tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: rollup_parent_task_id = coalesce(dispatched_by_task_id, parent_task_id)
+      - name: status
+        description: >
+          The task's state upstream, kept as the label it is. A failed status still counts toward
+          its rollup's spend.
+      - name: created_at
+        description: When the task was created upstream.
+      - name: exported_at
+        description: Which export run observed this row, and what orders two observations of it.
+      - name: loaded_at
+        description: When the loader read the file this row arrived in.
+
+unit_tests:
+  # The three tests below mock the landing table with SQL rather than rows: the
+  # table does not exist until the loader's first run, and a row fixture needs to
+  # read the relation to type its columns. A SQL fixture is the landing's shape
+  # stated here, so the test runs before the table exists and still fails on a
+  # column renamed on either side.
+
+  # The dedupe. Each export re-emits a trailing window, so a row appears once per
+  # export that covered it and only the newest observation may count. A stale
+  # observation winning would double a session's cost.
+  - name: delegate_swarm_session_cost_keeps_the_newest_export
+    model: stg_airflow_source__delegate_swarm_session_cost
+    given:
+      - input: source('airflow_source', 'delegate_swarm_session_cost')
+        format: sql
+        rows: |
+          select
+              'c1' as id,
+              's1' as session_id,
+              't1' as task_id,
+              'a1' as agent_id,
+              'builder' as agent_name,
+              'model-a' as model,
+              'harness' as cost_source,
+              'harness' as kind,
+              cast(1.500000 as decimal(20, 6)) as total_cost_usd,
+              cast(1.500000 as decimal(20, 6)) as harness_cost_usd,
+              cast(100 as bigint) as input_tokens,
+              cast(50 as bigint) as output_tokens,
+              cast(0 as bigint) as cache_read_tokens,
+              cast(0 as bigint) as cache_write_tokens,
+              cast(0 as bigint) as cache_write_5m_tokens,
+              cast(0 as bigint) as cache_write_1h_tokens,
+              cast(0 as bigint) as reasoning_output_tokens,
+              cast(0 as bigint) as thinking_tokens,
+              cast(1000 as bigint) as duration_ms,
+              cast(3 as bigint) as num_turns,
+              cast(0 as int) as is_error,
+              timestamp '2026-11-17 10:00:00' as created_at,
+              timestamp '2026-11-18 09:15:00' as exported_at,
+              timestamp '2026-11-18 10:45:00' as loaded_at
+          union all
+          select
+              'c1', 's1', 't1', 'a1', 'builder', 'model-a', 'harness', 'harness',
+              cast(9.500000 as decimal(20, 6)), cast(9.500000 as decimal(20, 6)),
+              cast(100 as bigint), cast(50 as bigint), cast(0 as bigint),
+              cast(0 as bigint), cast(0 as bigint), cast(0 as bigint),
+              cast(0 as bigint), cast(0 as bigint), cast(1000 as bigint),
+              cast(3 as bigint), cast(0 as int),
+              timestamp '2026-11-17 10:00:00',
+              timestamp '2026-11-17 09:15:00',
+              timestamp '2026-11-17 10:45:00'
+    expect:
+      rows:
+        - {id: c1, cost_usd: 1.5, exported_at: "2026-11-18 09:15:00"}
+
+  # The ledger's 0/1 integer becomes a boolean downstream, so no reader has to
+  # remember which shape it is.
+  - name: delegate_swarm_session_cost_maps_is_error_to_a_boolean
+    model: stg_airflow_source__delegate_swarm_session_cost
+    given:
+      - input: source('airflow_source', 'delegate_swarm_session_cost')
+        format: sql
+        rows: |
+          select
+              'c2' as id, 's1' as session_id, 't1' as task_id, 'a1' as agent_id,
+              'builder' as agent_name, 'model-a' as model, 'harness' as cost_source,
+              'harness' as kind,
+              cast(2.000000 as decimal(20, 6)) as total_cost_usd,
+              cast(2.000000 as decimal(20, 6)) as harness_cost_usd,
+              cast(10 as bigint) as input_tokens, cast(5 as bigint) as output_tokens,
+              cast(0 as bigint) as cache_read_tokens, cast(0 as bigint) as cache_write_tokens,
+              cast(0 as bigint) as cache_write_5m_tokens, cast(0 as bigint) as cache_write_1h_tokens,
+              cast(0 as bigint) as reasoning_output_tokens, cast(0 as bigint) as thinking_tokens,
+              cast(500 as bigint) as duration_ms, cast(2 as bigint) as num_turns,
+              cast(1 as int) as is_error,
+              timestamp '2026-11-17 10:00:00' as created_at,
+              timestamp '2026-11-18 09:15:00' as exported_at,
+              timestamp '2026-11-18 10:45:00' as loaded_at
+    expect:
+      rows:
+        - {id: c2, is_error: true}
+
+  # `unknown_agent` is the export's stated placeholder for a cost row whose agent
+  # row is gone, and it has to survive staging rather than be nulled: the daily
+  # mart's `not_null` test would otherwise fail on exactly the rows that prove the
+  # join did not drop them.
+  - name: delegate_swarm_session_cost_keeps_the_unknown_agent_placeholder
+    model: stg_airflow_source__delegate_swarm_session_cost
+    given:
+      - input: source('airflow_source', 'delegate_swarm_session_cost')
+        format: sql
+        rows: |
+          select
+              'c3' as id, 's1' as session_id, 't1' as task_id, 'a1' as agent_id,
+              'unknown_agent' as agent_name, 'model-a' as model, 'harness' as cost_source,
+              'harness' as kind,
+              cast(0.000000 as decimal(20, 6)) as total_cost_usd,
+              cast(null as decimal(20, 6)) as harness_cost_usd,
+              cast(1 as bigint) as input_tokens, cast(1 as bigint) as output_tokens,
+              cast(0 as bigint) as cache_read_tokens, cast(0 as bigint) as cache_write_tokens,
+              cast(0 as bigint) as cache_write_5m_tokens, cast(0 as bigint) as cache_write_1h_tokens,
+              cast(0 as bigint) as reasoning_output_tokens, cast(0 as bigint) as thinking_tokens,
+              cast(10 as bigint) as duration_ms, cast(1 as bigint) as num_turns,
+              cast(0 as int) as is_error,
+              timestamp '2026-11-17 10:00:00' as created_at,
+              timestamp '2026-11-18 09:15:00' as exported_at,
+              timestamp '2026-11-18 10:45:00' as loaded_at
+    expect:
+      rows:
+        - {id: c3, agent_name: unknown_agent}
+
+  # The edge the rollup follows, and the fallback that makes it available when
+  # only the context edge is set. Picking the wrong one would silently re-root a
+  # whole dispatch tree.
+  - name: delegate_swarm_task_edge_prefers_the_dispatch_edge
+    model: stg_airflow_source__delegate_swarm_task_edge
+    given:
+      - input: source('airflow_source', 'delegate_swarm_task_edge')
+        format: sql
+        rows: |
+          select
+              't1' as task_id,
+              't0' as parent_task_id,
+              cast('t9' as string) as dispatched_by_task_id,
+              'done' as status,
+              timestamp '2026-11-17 10:00:00' as created_at,
+              timestamp '2026-11-18 09:15:00' as exported_at,
+              timestamp '2026-11-18 10:45:00' as loaded_at
+          union all
+          select
+              't2', 't0', cast(null as string), 'done',
+              timestamp '2026-11-17 11:00:00',
+              timestamp '2026-11-18 09:15:00',
+              timestamp '2026-11-18 10:45:00'
+    expect:
+      rows:
+        - {task_id: t1, rollup_parent_task_id: t9}
+        - {task_id: t2, rollup_parent_task_id: t0}

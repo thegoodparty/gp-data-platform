@@ -12,8 +12,13 @@ where
     (
         startswith(tables.table_name, 'quickbooks_')
         or startswith(tables.table_name, 'stripe_')
-        or tables.table_name
-        in ('bifrost_daily_usage', 'anthropic_daily_usage', 'ai_usage_daily')
+        or tables.table_name in (
+            'bifrost_daily_usage',
+            'anthropic_daily_usage',
+            'ai_usage_daily',
+            'delegate_swarm_daily_usage',
+            'delegate_swarm_task_spend'
+        )
     )
     and (
         tables.table_schema = 'dbt'

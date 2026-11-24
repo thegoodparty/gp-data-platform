@@ -1587,6 +1587,41 @@ sources:
           freshness:
             warn_after: { count: 1, period: day }
             error_after: { count: 3, period: day }
+      - name: delegate_swarm_session_cost
+        description: >
+          One row per delegate swarm `session_costs` row, landed from the swarm
+          host's daily JSON Lines export of its own SQLite ledger. The swarm
+          calls Fireworks directly and never reaches the Bifrost gateway, so its
+          spend cannot be reconstructed from `bifrost_request_log` at any key.
+
+          Append-only: each export re-emits a 7 day window, or 90 days on the
+          monthly run, so a row appears once per export that covered it, and
+          `stg_airflow_source__delegate_swarm_session_cost` keeps the newest
+          observation of each `id`. Every column is an id, a number, an enum
+          label or a timestamp; no task text, prompt, output or failure reason is
+          exported.
+        # Same heartbeat argument as the Bifrost table above: a daily append, so
+        # the schema's backstop would hide a dead exporter for a fortnight.
+        config:
+          freshness:
+            warn_after: { count: 1, period: day }
+            error_after: { count: 3, period: day }
+      - name: delegate_swarm_task_edge
+        description: >
+          One row per delegate swarm `agent_tasks` row in the export's window:
+          the task's two parent edges, its status and its clock. Append-only, so
+          a task appears once per export that covered it, and
+          `stg_airflow_source__delegate_swarm_task_edge` keeps the newest
+          observation of each `task_id`.
+
+          Both edges are here because upstream distinguishes them: the rollup
+          follows `coalesce(dispatched_by_task_id, parent_task_id)`, which is a
+          model decision and would be a pipeline change if only one were
+          exported.
+        config:
+          freshness:
+            warn_after: { count: 1, period: day }
+            error_after: { count: 3, period: day }
 
   - name: model_predictions
     schema: model_predictions

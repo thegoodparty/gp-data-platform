@@ -1,0 +1,76 @@
+version: 2
+
+models:
+  - name: int__delegate_swarm_task_root
+    description: >
+      Every delegate swarm task, with the task its spend rolls up to. The one place the walk
+      lives, so the daily and per-task marts cannot disagree about a task's root.
+
+      A task follows `rollup_parent_task_id`, which staging resolved as
+      coalesce(dispatched_by_task_id, parent_task_id). A parent with no row of its own is never
+      stepped to, so the task whose parent is missing is its own root, and a cycle resolves to a
+      task inside the loop with the depth bound stopping it. Ephemeral: it is a per-task trace and
+      only the marts should expose the swarm.
+    columns:
+      - name: task_id
+        description: The task.
+        data_tests:
+          - not_null
+          - unique
+      - name: root_task_id
+        description: >
+          The task this one's spend rolls up to, which is itself for a root, for a task whose
+          parent never landed, and for a task inside an upstream cycle.
+        data_tests:
+          - not_null
+      - name: depth
+        description: How many edges the walk crossed. 0 for a root.
+
+unit_tests:
+  # A two-level chain and the missing-parent rule. The chain's leaf has to resolve
+  # to the grandparent, and the task whose parent is not in the landing has to
+  # resolve to itself rather than disappear.
+  - name: delegate_swarm_task_root_walks_a_chain_and_roots_a_missing_parent
+    model: int__delegate_swarm_task_root
+    given:
+      - input: ref('stg_airflow_source__delegate_swarm_task_edge')
+        format: sql
+        rows: |
+          select
+              'r1' as task_id,
+              cast(null as string) as rollup_parent_task_id
+          union all
+          select 'c1', 'r1'
+          union all
+          select 'g1', 'c1'
+          -- its parent, t0, is absent from the landing
+          union all
+          select 'orphan', 't0'
+    expect:
+      rows:
+        - {task_id: r1, root_task_id: r1, depth: 0}
+        - {task_id: c1, root_task_id: r1, depth: 1}
+        - {task_id: g1, root_task_id: r1, depth: 2}
+        - {task_id: orphan, root_task_id: orphan, depth: 0}
+
+  # An upstream cycle has to terminate rather than hang the nightly build. The
+  # bound stops the walk, and the depth-then-id tiebreak makes the answer the same
+  # on every run instead of leaving it to whichever row the engine read last.
+  #
+  # This pins the shape of the answer as well as its presence: the walk of a
+  # cycle alternates and, at the bound, lands back where it started. So a task in
+  # a two-task loop roots at itself. That is arbitrary, but it is deterministic
+  # and the same for both marts, which is what the bound is for.
+  - name: delegate_swarm_task_root_terminates_on_a_cycle
+    model: int__delegate_swarm_task_root
+    given:
+      - input: ref('stg_airflow_source__delegate_swarm_task_edge')
+        format: sql
+        rows: |
+          select 'x' as task_id, 'y' as rollup_parent_task_id
+          union all
+          select 'y', 'x'
+    expect:
+      rows:
+        - {task_id: x, root_task_id: x, depth: 32}
+        - {task_id: y, root_task_id: y, depth: 32}

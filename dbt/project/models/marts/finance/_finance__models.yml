@@ -206,13 +206,16 @@ models:
       cannot reconcile one day does not remove another source's rows.
 
       1. **`cost_basis` says who measured the number.** `gateway_computed` is the Bifrost
-      gateway's own pricing catalog, `vendor_reported` is Anthropic's own report. They are not
-      the same kind of number: one is a calculation, the other a bill.
+      gateway's own pricing catalog, `vendor_reported` is Anthropic's own report, and
+      `self_reported` is the delegate swarm pricing its own sessions. They are not the same kind
+      of number: one is a calculation, one is a bill, one is a system's own estimate.
 
-      2. **The sources do not overlap.** Bifrost routes only to Bedrock and Fireworks, and the
+      2. **The sources do not overlap.** Bifrost routes only to Bedrock and Fireworks and the
       Anthropic arm is the Anthropic org directly, so nothing is counted twice and nothing needs
-      de-duplicating. That is why summing across `source` is safe, and why a new Bifrost provider
-      fails a test on `bifrost_daily_usage` rather than here.
+      de-duplicating. The swarm calls Fireworks directly and never reaches the gateway at all, so
+      it does not double count the Bifrost `fireworks` provider rows either: they are different
+      traffic to the same provider. That is why summing across `source` is safe, and why a new
+      Bifrost provider fails a test on `bifrost_daily_usage` rather than here.
 
       3. **`claude_all_models` is a label, not a model id.** The vendor does not split Claude cost
       by model at the grain we ingest, so the Anthropic arm carries one fixed label. Never add it
@@ -220,7 +223,7 @@ models:
 
       4. **Nulls mean the source has no such measure, not zero.** `session_count` and
       `total_tokens` are null on the Anthropic arm, and `request_count` is null on an Anthropic
-      residual row.
+      residual row and across the whole delegate swarm arm, which has no request to count.
 
       5. **`source_loaded_at` and `source_complete_through` are per source, not per row.** Both
       describe a feed, so a reader can tell a stalled feed from a quiet week, which the
@@ -228,8 +231,13 @@ models:
 
       6. **The completeness rules differ by source.** Bifrost is complete when
       `usage_date < to_date(source_exported_at)`, since that is when an export has passed the
-      day's midnight. Anthropic needs both of its reports read after the day closed. Neither is
-      ever compared against `current_date()`.
+      day's midnight. Anthropic needs both of its reports read after the day closed. The swarm is
+      complete through the day before its exporter's own newest stamp, since one run reads the
+      whole ledger. None is ever compared against `current_date()`.
+
+      7. **A delegate swarm row is attributed to an agent, never to a person.** The swarm has no
+      person in it, so `attribution_kind = 'agent'` and `attribution` is the agent's operator-set
+      label, or `unknown_agent` where the ledger's agent row was gone. Never a synthesised email.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -247,13 +255,15 @@ models:
           - not_null
       - name: source
         description: >
-          Where the money is billed. `bifrost` is the gateway, `anthropic` the Anthropic org.
+          Where the money is billed. `bifrost` is the gateway, `anthropic` the Anthropic org, and
+          `delegate_swarm` the swarm host's own ledger.
         data_tests:
           - not_null
       - name: provider
         description: >
           The provider behind that source. `bedrock` and `fireworks` under Bifrost, `anthropic`
-          on the Anthropic arm.
+          on the Anthropic arm, and `fireworks` on the delegate swarm arm, which calls it
+          directly rather than through the gateway.
         data_tests:
           - not_null
       - name: model
@@ -266,8 +276,8 @@ models:
         description: >
           `person` when the spend belongs to a person, `agent` for a non-human actor, and
           `unattributed` for spend that belongs to nobody. Present so that an unattributed bucket
-          is never mistaken for a person in a list. `agent` arrives with the delegate swarm arm;
-          no Phase 1 source produces it.
+          is never mistaken for a person in a list. The delegate swarm arm is the source of
+          `agent`; no other source produces it.
         data_tests:
           - not_null
       - name: attribution
@@ -288,11 +298,12 @@ models:
           Anthropic residual row.
       - name: session_count
         description: >
-          Sessions in the group. Null on both current sources; a future source reports it.
+          Sessions in the group. Null on the Bifrost and Anthropic arms, which report requests
+          rather than sessions, and populated by the delegate swarm arm.
       - name: total_tokens
         description: >
           Input plus output tokens. Null on the Anthropic arm, which reports cost rather than
-          tokens at this grain.
+          tokens at this grain, and populated by the Bifrost and delegate swarm arms.
       - name: cost_basis
         description: >
           Who measured `cost_usd`. `gateway_computed` is the gateway's pricing catalog,
@@ -308,6 +319,165 @@ models:
         description: >
           The last UTC day the source is complete through. Constant per source. Complete is not
           final, since a vendor can still revise a complete day.
+
+  - name: delegate_swarm_daily_usage
+    description: >
+      The delegate swarm's model spend, one row per UTC day, agent, agent id and model. The swarm
+      calls Fireworks directly and never reaches the Bifrost gateway, so this is the only place its
+      spend is visible.
+
+      1. **It has no person.** The swarm's work is done by named agents, so `agent_name` is the
+      attribution and `ai_usage_daily` carries these rows as `attribution_kind = 'agent'`. Nothing
+      here is ever mapped to an email.
+
+      2. **`cost_basis` is `self_reported`.** The swarm's price book has no entry for the route it
+      uses, so pi prices its own sessions. That is a weaker number than a gateway's computation or
+      a vendor's bill, and `unpriced_cost_usd` is the part of `cost_usd` that rests on it.
+
+      3. **A missing agent does not drop the row.** The export left-joins its `agents` table and
+      writes `unknown_agent` where the agent is gone, so this keeps the placeholder instead of
+      filtering. Dropping it would make the totals smaller than the ledger with no test able to see
+      it.
+
+      4. **`task_count` is distinct rollup tasks, not sessions.** It uses the same root walk as
+      `delegate_swarm_task_spend`, so the two marts agree on the denominator.
+
+      5. **A session with no `task_id` counts here.** It has no task to roll up to and so is absent
+      from the task mart, but its cost is real and belongs in the day.
+
+      6. **`source_complete_through` is the day before the newest export's own UTC date.** The
+      exporter reads the whole ledger at 09:15, so its run on day D has everything up to D's
+      midnight. Derived from the anchor rather than from the newest day carrying a row, so a quiet
+      stretch does not look like a stalled feed.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [usage_date, agent_name, agent_id, model]
+    columns:
+      - name: usage_date
+        description: UTC day the session's cost row was written, not the local day of anyone involved.
+        data_tests:
+          - not_null
+      - name: agent_name
+        description: >
+          The agent's operator-set label, or `unknown_agent` where the export's agent row was gone.
+          This is the attribution `ai_usage_daily` publishes for the swarm.
+        databricks_tags:
+          sensitive: identifier
+        data_tests:
+          - not_null
+      - name: agent_id
+        description: The agent's id. Part of the grain so two agents sharing a label stay apart.
+        data_tests:
+          - not_null
+      - name: model
+        description: The model the swarm resolved for the day's sessions. Never blank.
+        data_tests:
+          - not_null
+      - name: session_count
+        description: Sessions in the group.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: task_count
+        description: >
+          Distinct rollup tasks the group's sessions belong to, on the same root walk as
+          `delegate_swarm_task_spend`. Sessions with no task contribute nothing.
+      - name: error_session_count
+        description: Sessions in the group the ledger marked failed. They still count toward cost.
+      - name: unpriced_session_count
+        description: >
+          Sessions the swarm could not price from its own book, where pi self-reported the cost.
+      - name: total_tokens
+        description: Input plus output tokens over the group.
+      - name: cost_usd
+        description: >
+          The swarm's own recorded cost over the group. Not invoiced spend, and not comparable with
+          a gateway or vendor figure without reading `cost_basis`.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: unpriced_cost_usd
+        description: >
+          The part of `cost_usd` whose session the swarm could not price from its own book, so pi
+          self-reported it. Read beside `cost_usd` as the share that is less certain.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: source_exported_at
+        description: The newest export that observed any session in the group.
+      - name: source_loaded_at
+        description: >
+          The newest export over the whole model, so the same value on every row. Read beside
+          `source_complete_through`: the pair is what shows a stalled exporter.
+      - name: source_complete_through
+        description: >
+          The last UTC day the export has fully seen: the day before its own newest stamp. Constant
+          across the model.
+
+  - name: delegate_swarm_task_spend
+    description: >
+      The delegate swarm's spend per rollup task, one row per task, and the single place the
+      cost-per-task definition lives. A change to what counts toward a task is a change to this
+      model and nothing else, which is why the unit tests below pin the current behaviour.
+
+      1. **A task's spend is its whole subtree's.** Every session whose `task_id` rolls up to the
+      task, itself included, where the rollup edge is
+      `coalesce(dispatched_by_task_id, parent_task_id)` walked to its root.
+
+      2. **Failed attempts count.** A session with `is_error` and a task in a failed state are both
+      real spend. Excluding them would make a retried task look cheaper than one that succeeded
+      first time.
+
+      3. **`kind = 'system-one'` counts.** Upstream's own task totals sum every row, so this does
+      too rather than presenting a subtotal as the task's cost.
+
+      4. **`unpriced` dollars count in `cost_usd`, with `unpriced_cost_usd` beside them.** The share
+      is published rather than subtracted, so the total still equals what the ledger says.
+
+      5. **A session with a null `task_id` is absent here.** It has no task to roll up to. It stays
+      in `delegate_swarm_daily_usage`, so no spend disappears from the overall picture.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [rollup_task_id]
+    columns:
+      - name: rollup_task_id
+        description: The task whose subtree this row totals, which is a task with no rolled-up edge.
+        data_tests:
+          - not_null
+      - name: session_count
+        description: Sessions across the subtree.
+        data_tests:
+          - not_null
+      - name: child_task_count
+        description: >
+          Tasks in the subtree, the rollup task included, so a leaf is 1. A broken chain shows up
+          as a smaller number here rather than as missing spend.
+        data_tests:
+          - not_null
+      - name: cost_usd
+        description: The subtree's recorded cost, failed attempts and `system-one` rows included.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: unpriced_cost_usd
+        description: The part of `cost_usd` that pi self-reported rather than the swarm's own book.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: first_session_at
+        description: When the subtree's earliest session cost row was written. Null for a task with no sessions.
+      - name: last_session_at
+        description: When the subtree's latest session cost row was written. Null for a task with no sessions.
 
   - name: quickbooks_accounts
     description: >
@@ -986,3 +1156,276 @@ unit_tests:
         # Anthropic: the fixed model label, the vendor basis, and no tokens.
         - {usage_date: "2026-11-01", source: anthropic, provider: anthropic, model: claude_all_models, attribution_kind: person, attribution: "someone@goodparty.org", cost_usd: 7, request_count: 11, session_count: null, total_tokens: null, cost_basis: vendor_reported, source_loaded_at: "2026-11-16 20:25:00", source_complete_through: "2026-11-15"}
         - {usage_date: "2026-11-01", source: anthropic, provider: anthropic, model: claude_all_models, attribution_kind: unattributed, attribution: unattributed, cost_usd: 3, request_count: null, session_count: null, total_tokens: null, cost_basis: vendor_reported, source_loaded_at: "2026-11-16 20:25:00", source_complete_through: "2026-11-15"}
+
+  # The rollup is the one definition of cost per task, so it is pinned here rather
+  # than left to a reader of the SQL. Each case below is a clause of section 4 of
+  # the contract: a chain, a chain whose parent earned nothing, a failed attempt,
+  # an `unpriced` session, and a session with no task at all.
+  #
+  # The root model is mocked with SQL rather than rows because it is ephemeral and
+  # because its own walk is unit tested through the mart below it: this test pins
+  # what the task mart does with a resolved root, which is the arithmetic the
+  # definition is about.
+
+  # A two-level chain and a parent that never earned anything. The session on the
+  # child rolls up to the grandparent, so both the parent and the grandparent show
+  # the same spend, and a rollup whose own sessions are empty still gets a row.
+  - name: delegate_swarm_task_spend_rolls_a_chain_to_its_root
+    model: delegate_swarm_task_spend
+    given:
+      - input: ref('int__delegate_swarm_task_root')
+        format: sql
+        rows: |
+          select 'r1' as task_id, 'r1' as root_task_id, 0 as depth
+          union all select 'c1', 'r1', 1
+          union all select 'c2', 'r1', 1
+          union all select 'g1', 'r1', 2
+      - input: ref('stg_airflow_source__delegate_swarm_session_cost')
+        format: sql
+        rows: |
+          select
+              'r1' as task_id, 'harness' as cost_source,
+              cast(1.000000 as decimal(20, 6)) as cost_usd,
+              timestamp '2026-11-17 10:00:00' as created_at
+          union all
+          select 'c1', 'harness', cast(2.000000 as decimal(20, 6)),
+              timestamp '2026-11-17 11:00:00'
+          union all
+          select 'g1', 'harness', cast(4.000000 as decimal(20, 6)),
+              timestamp '2026-11-17 12:00:00'
+    expect:
+      rows:
+        # The root's own session plus everything under it.
+        - {rollup_task_id: r1, session_count: 3, child_task_count: 4, cost_usd: 7, unpriced_cost_usd: 0, first_session_at: "2026-11-17 10:00:00", last_session_at: "2026-11-17 12:00:00"}
+        # A child is not itself a rollup, so it has no row: the subtree hangs off
+        # the root. Only tasks that are their own root appear.
+
+  # A rollup with no sessions of its own and none below it still gets a row, so
+  # the task list is the tree's rather than the traffic's. A failed attempt counts
+  # toward its task's spend, and a `system-one` row counts too.
+  - name: delegate_swarm_task_spend_counts_failures_and_system_rows
+    model: delegate_swarm_task_spend
+    given:
+      - input: ref('int__delegate_swarm_task_root')
+        format: sql
+        rows: |
+          select 'r1' as task_id, 'r1' as root_task_id, 0 as depth
+          union all select 'c1', 'r1', 1
+          union all select 'r2', 'r2', 0
+      - input: ref('stg_airflow_source__delegate_swarm_session_cost')
+        format: sql
+        rows: |
+          select
+              'r1' as task_id, 'harness' as cost_source,
+              cast(1.000000 as decimal(20, 6)) as cost_usd,
+              timestamp '2026-11-17 10:00:00' as created_at
+          union all
+          -- a failed attempt on the child: still real spend
+          select 'c1', 'harness', cast(2.000000 as decimal(20, 6)),
+              timestamp '2026-11-17 11:00:00'
+          union all
+          -- the swarm's own overhead
+          select 'r1', 'harness', cast(0.500000 as decimal(20, 6)),
+              timestamp '2026-11-17 12:00:00'
+    expect:
+      rows:
+        - {rollup_task_id: r1, session_count: 3, child_task_count: 2, cost_usd: 3.5, unpriced_cost_usd: 0, first_session_at: "2026-11-17 10:00:00", last_session_at: "2026-11-17 12:00:00"}
+        # A task with no sessions at all is still a row, with zeros and null clocks.
+        - {rollup_task_id: r2, session_count: 0, child_task_count: 1, cost_usd: 0, unpriced_cost_usd: 0, first_session_at: null, last_session_at: null}
+
+  # An `unpriced` session's dollars count in the total and are also published as
+  # the share beside it. Subtracting them would make the total disagree with the
+  # ledger.
+  - name: delegate_swarm_task_spend_publishes_the_unpriced_share
+    model: delegate_swarm_task_spend
+    given:
+      - input: ref('int__delegate_swarm_task_root')
+        format: sql
+        rows: |
+          select 'r1' as task_id, 'r1' as root_task_id, 0 as depth
+      - input: ref('stg_airflow_source__delegate_swarm_session_cost')
+        format: sql
+        rows: |
+          select
+              'r1' as task_id, 'harness' as cost_source,
+              cast(3.000000 as decimal(20, 6)) as cost_usd,
+              timestamp '2026-11-17 10:00:00' as created_at
+          union all
+          select 'r1', 'unpriced', cast(1.250000 as decimal(20, 6)),
+              timestamp '2026-11-17 11:00:00'
+    expect:
+      rows:
+        - {rollup_task_id: r1, session_count: 2, cost_usd: 4.25, unpriced_cost_usd: 1.25}
+
+  # A session with no task is excluded from the task grain, because it has nothing
+  # to roll up to. It stays in the daily mart, which is where its cost is still
+  # counted.
+  - name: delegate_swarm_task_spend_excludes_sessions_with_no_task
+    model: delegate_swarm_task_spend
+    given:
+      - input: ref('int__delegate_swarm_task_root')
+        format: sql
+        rows: |
+          select 'r1' as task_id, 'r1' as root_task_id, 0 as depth
+      - input: ref('stg_airflow_source__delegate_swarm_session_cost')
+        format: sql
+        rows: |
+          select
+              'r1' as task_id, 'harness' as cost_source,
+              cast(1.000000 as decimal(20, 6)) as cost_usd,
+              timestamp '2026-11-17 10:00:00' as created_at
+          union all
+          select cast(null as string), 'harness', cast(9.000000 as decimal(20, 6)),
+              timestamp '2026-11-17 11:00:00'
+    expect:
+      rows:
+        - {rollup_task_id: r1, session_count: 1, cost_usd: 1, unpriced_cost_usd: 0}
+
+  # The daily grain, and the partial publication delta item 12 asks to have tested
+  # rather than designed away: a cost file that lands without its edge file. The
+  # cost rows still count in full, and `task_count` is 0 for them until the next
+  # run's window brings the edges in. That is the mis-rooting the lead accepted, and
+  # this pins what a reader sees while it is happening rather than pretending the
+  # two objects are atomic.
+  #
+  # It also covers the `unknown_agent` placeholder surviving to the mart, which is
+  # the only way the `not_null` test on `agent_name` can be honest.
+  - name: delegate_swarm_daily_usage_counts_a_cost_file_with_no_edge_file
+    model: delegate_swarm_daily_usage
+    given:
+      - input: ref('int__delegate_swarm_task_root')
+        format: sql
+        # No rows: the edge file has not landed, so no task has a root.
+        rows: |
+          select
+              cast(null as string) as task_id,
+              cast(null as string) as root_task_id,
+              cast(0 as int) as depth
+          where false
+      - input: ref('stg_airflow_source__delegate_swarm_session_cost')
+        format: sql
+        rows: |
+          select
+              timestamp '2026-11-17 10:00:00' as created_at,
+              'builder' as agent_name,
+              'a1' as agent_id,
+              'model-a' as model,
+              false as is_error,
+              'harness' as cost_source,
+              cast(1.500000 as decimal(20, 6)) as cost_usd,
+              cast(100 as bigint) as input_tokens,
+              cast(50 as bigint) as output_tokens,
+              't1' as task_id,
+              timestamp '2026-11-18 09:15:00' as exported_at
+          union all
+          -- the agent row is gone upstream, and the row still counts
+          select
+              timestamp '2026-11-17 11:00:00', 'unknown_agent', 'a9', 'model-a',
+              true, 'unpriced', cast(0.250000 as decimal(20, 6)),
+              cast(10 as bigint), cast(5 as bigint), 't2',
+              timestamp '2026-11-18 09:15:00'
+    expect:
+      rows:
+        # Cost is complete and `task_count` is 0 because no edges landed yet. The
+        # export ran on the 18th, so the 17th is the last complete day.
+        - {usage_date: "2026-11-17", agent_name: builder, agent_id: a1, model: model-a, session_count: 1, task_count: 0, error_session_count: 0, unpriced_session_count: 0, total_tokens: 150, cost_usd: 1.5, unpriced_cost_usd: 0, source_exported_at: "2026-11-18 09:15:00", source_loaded_at: "2026-11-18 09:15:00", source_complete_through: "2026-11-17"}
+        # A failed, unpriced session under the placeholder agent is kept, counted
+        # in both failure and unpriced columns, and its dollars are the unpriced share.
+        - {usage_date: "2026-11-17", agent_name: unknown_agent, agent_id: a9, model: model-a, session_count: 1, task_count: 0, error_session_count: 1, unpriced_session_count: 1, total_tokens: 15, cost_usd: 0.25, unpriced_cost_usd: 0.25, source_exported_at: "2026-11-18 09:15:00", source_loaded_at: "2026-11-18 09:15:00", source_complete_through: "2026-11-17"}
+
+  # With the edges present, `task_count` counts distinct rollup tasks rather than
+  # sessions, so it agrees with the task mart's denominator. Two sessions on one
+  # task is one task, and a session with no task adds nothing.
+  - name: delegate_swarm_daily_usage_counts_distinct_rollup_tasks
+    model: delegate_swarm_daily_usage
+    given:
+      - input: ref('int__delegate_swarm_task_root')
+        format: sql
+        rows: |
+          select 't1' as task_id, 'r1' as root_task_id, 0 as depth
+          union all select 't2', 'r1', 1
+      - input: ref('stg_airflow_source__delegate_swarm_session_cost')
+        format: sql
+        rows: |
+          select
+              timestamp '2026-11-17 10:00:00' as created_at,
+              'builder' as agent_name, 'a1' as agent_id, 'model-a' as model,
+              false as is_error, 'harness' as cost_source,
+              cast(1.000000 as decimal(20, 6)) as cost_usd,
+              cast(10 as bigint) as input_tokens, cast(10 as bigint) as output_tokens,
+              't1' as task_id, timestamp '2026-11-18 09:15:00' as exported_at
+          union all
+          select
+              timestamp '2026-11-17 11:00:00', 'builder', 'a1', 'model-a',
+              false, 'harness', cast(1.000000 as decimal(20, 6)),
+              cast(10 as bigint), cast(10 as bigint), 't2',
+              timestamp '2026-11-18 09:15:00'
+          union all
+          -- no task at all: it counts as a session and toward no task
+          select
+              timestamp '2026-11-17 12:00:00', 'builder', 'a1', 'model-a',
+              false, 'harness', cast(1.000000 as decimal(20, 6)),
+              cast(10 as bigint), cast(10 as bigint), cast(null as string),
+              timestamp '2026-11-18 09:15:00'
+    expect:
+      rows:
+        - {usage_date: "2026-11-17", agent_name: builder, session_count: 3, task_count: 1, total_tokens: 60, cost_usd: 3}
+
+  # The swarm arm's mapping, which is the whole of its contribution to the combined
+  # model: the source and provider literals, `self_reported` as the basis, the agent
+  # as the attribution, and the null `request_count` that says this arm has no
+  # request to count. A synthesised email here would put one person's name on a
+  # machine's spend.
+  - name: ai_usage_daily_maps_the_delegate_swarm_arm
+    model: ai_usage_daily
+    given:
+      - input: ref('bifrost_daily_usage')
+        format: sql
+        rows: |
+          select
+              to_date('2026-11-17') as usage_date,
+              'bedrock' as provider,
+              'model-a' as model,
+              'test.user@goodparty.org' as person_email,
+              cast(1.500000 as decimal(20, 6)) as cost_usd,
+              cast(4 as bigint) as request_count,
+              cast(100 as bigint) as total_tokens,
+              timestamp '2026-11-18 09:00:00' as source_exported_at
+      - input: ref('anthropic_daily_usage')
+        format: sql
+        rows: |
+          select
+              to_date('2026-11-17') as usage_date,
+              'someone@goodparty.org' as person_email,
+              false as is_unattributed,
+              cast(2.000000 as decimal(20, 6)) as cost_usd,
+              cast(3 as bigint) as request_count,
+              timestamp '2026-11-16 20:25:00' as source_loaded_at,
+              to_date('2026-11-15') as source_complete_through
+      - input: ref('delegate_swarm_daily_usage')
+        format: sql
+        rows: |
+          select
+              to_date('2026-11-17') as usage_date,
+              'builder' as agent_name,
+              'a1' as agent_id,
+              'model-a' as model,
+              cast(2 as bigint) as session_count,
+              cast(1 as bigint) as task_count,
+              cast(1 as bigint) as error_session_count,
+              cast(0 as bigint) as unpriced_session_count,
+              cast(300 as bigint) as total_tokens,
+              cast(4.000000 as decimal(20, 6)) as cost_usd,
+              cast(0.000000 as decimal(20, 6)) as unpriced_cost_usd,
+              timestamp '2026-11-18 09:15:00' as source_exported_at,
+              timestamp '2026-11-18 09:15:00' as source_loaded_at,
+              to_date('2026-11-17') as source_complete_through
+    expect:
+      rows:
+        # Bifrost: its completeness date is the newest day an export has passed,
+        # which is the 17th because the export ran on the 18th.
+        - {usage_date: "2026-11-17", source: bifrost, provider: bedrock, model: model-a, attribution_kind: person, attribution: "test.user@goodparty.org", cost_usd: 1.5, request_count: 4, session_count: null, total_tokens: 100, cost_basis: gateway_computed, source_loaded_at: "2026-11-18 09:00:00", source_complete_through: "2026-11-17"}
+        - {usage_date: "2026-11-17", source: anthropic, provider: anthropic, model: claude_all_models, attribution_kind: person, attribution: "someone@goodparty.org", cost_usd: 2, request_count: 3, session_count: null, total_tokens: null, cost_basis: vendor_reported, source_loaded_at: "2026-11-16 20:25:00", source_complete_through: "2026-11-15"}
+        # The agent is the attribution, there is no request count, and the tokens
+        # and sessions are populated.
+        - {usage_date: "2026-11-17", source: delegate_swarm, provider: fireworks, model: model-a, attribution_kind: agent, attribution: builder, cost_usd: 4, request_count: null, session_count: 2, total_tokens: 300, cost_basis: self_reported, source_loaded_at: "2026-11-18 09:15:00", source_complete_through: "2026-11-17"}
