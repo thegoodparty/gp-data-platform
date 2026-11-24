@@ -42,7 +42,7 @@
 {% else %}
     with
         winning_source as (
-            select history.id, history._source
+            select history.id, history._source, history.lastmodifieddate
             from {{ ref("int__hubspot_contacts_history") }} as history
             -- Only rows the model emits, so any filter it applies is honored here.
             where
@@ -54,7 +54,26 @@
                 )
         ),
         airbyte_ids as (select id from winning_source where _source = 'airbyte'),
-        lakeflow_ids as (select id from winning_source where _source = 'lakeflow'),
+        -- Only rows still in live Lakeflow at the version this table stored. A
+        -- contact HubSpot has since merged or deleted stays here by design and is
+        -- gone from live Lakeflow, so counting it would read as cast loss forever;
+        -- a newer version would be comparing two different payloads.
+        lakeflow_ids as (
+            select live.id
+            from
+                (
+                    select id, lastmodifieddate
+                    from winning_source
+                    where _source = 'lakeflow'
+                ) as stored
+            inner join
+                (
+                    select cast(hs_object_id as string) as id, lastmodifieddate
+                    from {{ source("lakeflow_source", "contacts") }}
+                ) as live
+                on stored.id = live.id
+                and stored.lastmodifieddate = live.lastmodifieddate
+        ),
         raw_airbyte as (
             select
                 {%- for p in typed %}

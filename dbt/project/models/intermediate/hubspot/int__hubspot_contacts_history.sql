@@ -12,7 +12,14 @@
 {#- on_schema_change so a later registry row becomes a column here instead of
     leaving staging to select a missing one. Appending alone leaves it NULL, since
     the watermark skips unchanged contacts, so one run with
-    hubspot_contacts_history_rescan fills it. -#}
+    hubspot_contacts_history_rescan fills it.
+
+    The post_hook is the DSAR purge: this table is exempt from full refresh and the
+    merge never deletes, so a suppression reaches it here or not at all. Written
+    inline rather than through a set block, so ref() renders at runtime instead of
+    resolving to this model; and as a non-correlated IN subquery, like
+    int__user_hubspot_note_summary, so the predicate's bare id is this table's own
+    column, since the register has none. -#}
 {{
     config(
         materialized="incremental",
@@ -20,6 +27,9 @@
         unique_key="id",
         full_refresh=false,
         on_schema_change="append_new_columns",
+        post_hook=[
+            "delete from {{ this }} where id in (select id from {{ this }} where not ({{ dsar_first_party_not_suppressed('id', 'hs_contact_id', 'email', 'phone') }}))"
+        ],
     )
 }}
 
