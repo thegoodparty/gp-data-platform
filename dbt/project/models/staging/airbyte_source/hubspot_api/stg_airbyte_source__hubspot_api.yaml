@@ -187,7 +187,9 @@ models:
       - name: marketing_contact_status
         description: HubSpot `hs_marketable_status` — whether the contact is marketable.
       - name: is_contact_unworked
-        description: HubSpot `hs_is_unworked` — whether the contact has no logged outreach.
+        description: >
+          HubSpot `hs_is_unworked`, whether the contact has no logged outreach.
+          NULL on rows from the Lakeflow feed, which does not expose the property.
         data_tests:
           - accepted_values:
               arguments:
@@ -203,7 +205,9 @@ models:
       - name: conversion_type
         description: HubSpot conversion type.
       - name: lifecycle_current_stage_entered_at
-        description: Timestamp the contact entered its current lifecycle stage.
+        description: >
+          Timestamp the contact entered its current lifecycle stage.
+          NULL on rows from the Lakeflow feed, which does not expose the property.
       - name: lifecycle_customer_entered_at
         description: Timestamp the contact first entered the Customer lifecycle stage.
       - name: lifecycle_evangelist_entered_at
@@ -689,18 +693,22 @@ models:
           HubSpot contact property `hs_feedback_last_csat_survey_date` (Last CSAT
           survey date). The time that this contact last submitted a CSAT survey
           response. This is automatically set by HubSpot.
+          NULL on rows from the Lakeflow feed, which does not expose the property.
       - name: hs_feedback_last_csat_survey_follow_up
         description: >
           HubSpot contact property `hs_feedback_last_csat_survey_follow_up` (Last
           CSAT survey comment). Last CSAT survey comment from this contact.
+          NULL on rows from the Lakeflow feed, which does not expose the property.
       - name: hs_feedback_last_csat_survey_rating
         description: >
           HubSpot contact property `hs_feedback_last_csat_survey_rating` (Last CSAT
           survey rating). Last CSAT survey rating from this contact.
+          NULL on rows from the Lakeflow feed, which does not expose the property.
       - name: hs_feedback_last_nps_rating_number
         description: >
           HubSpot contact property `hs_feedback_last_nps_rating_number` (Latest NPS
           survey rating). Latest NPS survey rating that this contact gave
+          NULL on rows from the Lakeflow feed, which does not expose the property.
       - name: hs_object_id
         description: >
           HubSpot contact property `hs_object_id` (Record ID). The unique ID for
@@ -770,12 +778,14 @@ models:
           HubSpot contact property `serve__days_between_poll_scheduled_and_launched`
           (Serve - Days between Poll Scheduled and Launched). HubSpot property
           group: contactinformation.
+          NULL on rows from the Lakeflow feed, which does not expose the property.
       - name: serve__duration_between_results_received_and_launch_date
         description: >
           HubSpot contact property
           `serve__duration_between_results_received_and_launch_date` (Serve -
           Duration Between Results Received and Launch Date). HubSpot property
           group: contactinformation.
+          NULL on rows from the Lakeflow feed, which does not expose the property.
       - name: serve_founding_member_meeting
         description: >
           HubSpot contact property `serve_founding_member_meeting` (Serve Founding
@@ -1072,6 +1082,7 @@ models:
           HubSpot contact property `hubspotscore` (HubSpot Score). The number that
           shows qualification of contacts to sales readiness. It can be set in
           HubSpot's Lead Scoring app.
+          NULL on rows from the Lakeflow feed, which does not expose the property.
       - name: icp
         description: >
           HubSpot contact property `icp` (ICP). Is this person ICP for 2026

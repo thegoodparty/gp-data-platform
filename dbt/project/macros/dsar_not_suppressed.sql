@@ -125,21 +125,27 @@
 
 {% macro hubspot_contact_not_suppressed(contact_id_column) %}
     {#- For models that carry a contact id but not the contact's own fields. A contact
-        missing from the source passes; the caller's hs_contact_id predicate covers it. -#}
+        missing from the source passes; the caller's hs_contact_id predicate covers it.
+
+        Reads the history layer, not the Airbyte source: that is where the resolved
+        rows live now, and its typed email/phone columns are the ones a Lakeflow row
+        has, since a Lakeflow contact carries no `properties` blob. Filtering the raw
+        JSON here would let a submission from a Lakeflow-only contact whose phone is
+        registered past the filter. -#}
     not exists (
         select 1
         from
             (
                 select id as suppressed_contact_id
-                from {{ source("airbyte_source", "hubspot_api_contacts") }}
+                from {{ ref("int__hubspot_contacts_history") }}
                 where
                     not (
                         {{
                             dsar_first_party_not_suppressed(
                                 "id",
                                 "hs_contact_id",
-                                "get_json_object(properties, '$.email')",
-                                "get_json_object(properties, '$.phone')",
+                                "email",
+                                "phone",
                             )
                         }}
                     )

@@ -1,63 +1,144 @@
+-- Reads Lakeflow's companies table, not the Airbyte source directly: the name's
+-- "airbyte" now covers two producers. The frozen Airbyte table stays readable, and
+-- the two columns Lakeflow does not carry come from there by id.
+--
+-- Live ids only, deliberately: company_viability_hubspot INNER-joins this model as
+-- its proof that a Record ID still exists in HubSpot, so a company that is frozen
+-- but no longer in HubSpot would emit a deleted Record ID into a CSV a human
+-- imports, and the import would error.
+--
+-- Lakeflow hands every company property over as text, so the numeric and boolean
+-- columns are cast here, matching the registry's own patterns: the int_via_float
+-- round-trip because a good number of seats_available and general_votes_received
+-- values are float-formatted ("1.0", "498.0000000000") and a plain try_cast to int
+-- returns NULL for those, silently.
+with
+    lakeflow_companies as (
+        select
+            cast(hs_object_id as string) as id,
+            br_race_id,
+            candidate_name,
+            candidate_email,
+            candidate_office,
+            candidate_party,
+            candidate_district,
+            verified_candidates,
+            pledge_status,
+            incumbent,
+            official_office_name,
+            office_level,
+            office_type,
+            partisan_np,
+            open_seat_,
+            phone,
+            website,
+            linkedin_company_page,
+            twitterhandle,
+            facebook_url,
+            address,
+            state,
+            city,
+            filing_deadline,
+            primary_date,
+            election_date,
+            runoff_date,
+            uncontested,
+            number_of_opponents,
+            seats_available,
+            general_election_result,
+            general_votes_received,
+            total_general_votes_cast,
+            viability_2_0,
+            cast(createdate as timestamp) as created_at,
+            cast(hs_lastmodifieddate as timestamp) as updated_at
+        from {{ source("lakeflow_source", "companies") }}
+    ),
+
+    -- The two columns Lakeflow has no source for. candidates_seats is read by
+    -- int__hubspot_contacts_w_companies, which coalesces it into its seat column,
+    -- so dropping it would move published values. contacts is the association
+    -- array; no Lakeflow table carries associations, and nothing in dbt reads this
+    -- model's copy, so the frozen value is kept rather than nulled.
+    frozen_extras as (
+        select
+            cast(id as string) as id,
+            cast(properties_candidates_seats as int) as candidates_seats,
+            contacts
+        from {{ source("airbyte_source", "hubspot_api_companies") }}
+    ),
+
+    joined as (
+        select
+            lakeflow_companies.*, frozen_extras.candidates_seats, frozen_extras.contacts
+        from lakeflow_companies
+        left join frozen_extras on lakeflow_companies.id = frozen_extras.id
+    )
+
 select
     -- identifiers
     id,
     contacts,
 
     -- candidate information
-    properties_br_race_id as br_race_id,
-    properties_candidate_name as candidate_name,
-    properties_candidate_email as candidate_email,
-    properties_candidate_office as candidate_office,
-    properties_candidate_party as candidate_party,
-    properties_candidate_district as candidate_district,
-    cast(properties_candidates_seats as int) as candidates_seats,
-    properties_verified_candidates as verified_candidates,
-    {{ cast_to_boolean("properties_pledge_status") }} as is_pledged,
-    {{ cast_to_boolean("properties_incumbent") }} as is_incumbent,
+    br_race_id,
+    candidate_name,
+    candidate_email,
+    candidate_office,
+    candidate_party,
+    candidate_district,
+    candidates_seats,
+    verified_candidates,
+    {{ cast_to_boolean("pledge_status") }} as is_pledged,
+    {{ cast_to_boolean("incumbent") }} as is_incumbent,
 
     -- office information
-    properties_official_office_name as official_office_name,
-    properties_office_level as office_level,
-    properties_office_type as office_type,
-    {{ cast_to_boolean("properties_partisan_np", ["partisan"], ["nonpartisan"]) }}
-    as is_partisan,
-    {{ cast_to_boolean("properties_open_seat_") }} as is_open_seat,
+    official_office_name,
+    office_level,
+    office_type,
+    {{ cast_to_boolean("partisan_np", ["partisan"], ["nonpartisan"]) }} as is_partisan,
+    {{ cast_to_boolean("open_seat_") }} as is_open_seat,
 
     -- contact information
-    properties_phone as phone,
-    properties_website as website,
-    properties_linkedin_company_page as linkedin_company_page,
-    properties_twitterhandle as twitter_handle,
-    properties_facebook_url as facebook_url,
-    properties_address as address,
+    phone,
+    website,
+    linkedin_company_page,
+    twitterhandle as twitter_handle,
+    facebook_url,
+    address,
 
     -- geographic information
-    properties_state as state,
-    properties_city as city,
+    state,
+    city,
 
     -- election dates
-    properties_filing_deadline as filing_deadline,
-    properties_primary_date as primary_date,
-    properties_election_date as election_date,
-    properties_runoff_date as runoff_date,
+    filing_deadline,
+    primary_date,
+    election_date,
+    runoff_date,
 
     -- election context
-    {{ cast_to_boolean("properties_uncontested", ["uncontested"], ["contested"]) }}
+    {{ cast_to_boolean("uncontested", ["uncontested"], ["contested"]) }}
     as is_uncontested,
-    properties_number_of_opponents as number_of_opponents,
-    cast(properties_seats_available as int) as seats_available,
+    number_of_opponents,
+    try_cast(
+        try_cast(nullif(trim(seats_available), '') as float) as int
+    ) as seats_available,
 
     -- election results
-    properties_general_election_result as general_election_result,
-    cast(properties_general_votes_received as int) as general_votes_received,
-    cast(properties_total_general_votes_cast as int) as total_general_votes_cast,
+    general_election_result,
+    try_cast(
+        try_cast(nullif(trim(general_votes_received), '') as float) as int
+    ) as general_votes_received,
+    try_cast(
+        try_cast(nullif(trim(total_general_votes_cast), '') as float) as int
+    ) as total_general_votes_cast,
 
     -- assessments
-    properties_viability_2_0 as viability_score,
+    try_cast(nullif(trim(viability_2_0), '') as decimal(38, 10)) as viability_score,
 
     -- metadata
-    createdat as created_at,
-    updatedat as updated_at
-from {{ source("airbyte_source", "hubspot_api_companies") }}
+    created_at,
+    updated_at
+from joined
 -- Email only: a company phone can be a shared campaign line.
-where {{ dsar_not_suppressed("properties_candidate_email", "email") }}
+where {{ dsar_not_suppressed("candidate_email", "email") }}

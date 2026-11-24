@@ -338,3 +338,59 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "last_call_at >= first_call_at"
+
+  - name: int__hubspot_contacts_history
+    description: |
+      Never-delete layer over the HubSpot contacts feed. Lakeflow mirrors HubSpot's
+      current state, so a contact that is merged away or deleted stops being
+      returned; the frozen Airbyte extract stops at 2026-11-17. This table is the
+      only copy of anything HubSpot has dropped since, so it is incremental with
+      full_refresh disabled: a --full-refresh would rebuild it from current state
+      and lose every post-cutover deletion permanently.
+
+      The seed run unions Lakeflow with the frozen Airbyte rows, Lakeflow winning.
+      Every later run reads Lakeflow only, change-filtered on lastmodifieddate. A
+      row absent from Lakeflow is never deleted here.
+
+      Columns are typed by the hubspot_contact_property_columns registry, the same
+      one stg_airbyte_source__hubspot_api_contacts used to apply, so downstream sees
+      the same shape.
+    columns:
+      - name: id
+        description: HubSpot contact Record ID.
+        data_tests:
+          - not_null
+          - unique
+      - name: _source
+        description: >
+          Which producer the row's winning values came from: `lakeflow` or
+          `airbyte` (the frozen seed rows). Makes the seed window auditable and
+          scopes the cast-loss check to one producer at a time. Not published by
+          the staging model.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [lakeflow, airbyte]
+      - name: lastmodifieddate
+        description: >
+          HubSpot's last modified time, carried so the incremental run's watermark
+          filter can read it.
+
+  - name: int__hubspot_owners_history
+    description: |
+      Never-delete layer over the HubSpot owners feed. Lakeflow returns current
+      owners only and no archived ones at all, so an owner archived after the seed
+      would vanish. This table keeps it, which is the only way a historical
+      contact's owner can still be named. Incremental with full_refresh disabled
+      for the same reason as the contacts layer: the frozen Airbyte tables are the
+      only copy of the archived owners.
+
+      Active versus archived membership is NOT read from this table's own
+      `archived` flag. See stg_airbyte_source__hubspot_api_owners, which derives it
+      from the live Lakeflow snapshot.
+    columns:
+      - name: id
+        description: HubSpot owner ID.
+        data_tests:
+          - not_null
+          - unique
