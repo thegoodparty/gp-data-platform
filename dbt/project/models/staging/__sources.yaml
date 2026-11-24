@@ -779,10 +779,23 @@ sources:
           hs_call_duration) are flat columns prefixed `properties_` —
           the staging model `stg_airbyte_source__hubspot_api_engagements_calls`
           strips the prefix.
+      # Owner emails are GoodParty colleagues, so this is personnel data rather
+      # than contact data. Tagged on both streams because an archived owner's
+      # address is as personal as an active one's.
       - name: hubspot_api_owners_archived
         description: raw data load from HubSpot data model
+        columns:
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: hubspot_api_owners
         description: raw data load from HubSpot data model
+        columns:
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
       - name: hubspot_api_tickets
         columns:
           - name: properties
@@ -1827,6 +1840,17 @@ sources:
         description: >
           HubSpot owners, current state only, batch-refreshed each run. Returns
           no archived owners; int__hubspot_owners_history keeps those.
+        columns:
+          # Owner emails are GoodParty colleagues, so personnel data. Declared
+          # here as the same classification the airbyte_source owners entries
+          # carry, but this source is inert until the source-tag hook's schema
+          # scope covers it: it lists specific schemas and this one is not among
+          # them, so nothing is stamped and the declaring column is never
+          # checked against prod.
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
 
   - name: model_predictions
     schema: model_predictions
