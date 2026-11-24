@@ -1,28 +1,17 @@
 {#-
-    Accessors over the hubspot_contact_property_columns seed: the registry of
-    HubSpot contact properties surfaced on stg_airbyte_source__hubspot_api_contacts.
-    status='generated' rows are emitted by the model's loop; status='existing'
-    is reserved for documenting columns the model exposes outside the loop.
-    Models calling the accessor read the seed via run_query, so they must
-    declare: -- depends_on: {{ ref("hubspot_contact_property_columns") }}
+    Accessors over the hubspot_contact_property_columns seed registry.
+    status='generated' rows are emitted by the loop; status='existing' documents
+    columns the model exposes outside it. Callers read the seed with run_query, so
+    they must declare: -- depends_on: {{ ref("hubspot_contact_property_columns") }}
 
-    The loop runs in int__hubspot_contacts_history, not in the staging model:
-    the history table stores the typed columns, and staging projects them. Any
-    new caller is an intermediate model, not a staging one.
-
-    Adding a status='generated' row therefore adds a column to an incremental
-    table, which takes three steps: add the seed row, full-refresh the contacts
-    table in the Lakeflow pipeline (no schema evolution), then run dbt once with
-    --vars '{hubspot_contacts_history_rescan: true}'. The model appends the column
-    on that run, and the rescan drops the lastmodifieddate watermark so the
-    already-unchanged rows are merged again and the column is filled; without it
-    only contacts that changed since the last run would get a value.
+    The loop runs in int__hubspot_contacts_history, not in staging, so a new
+    status='generated' row adds a column to an incremental table. Three steps: add
+    the seed row, full-refresh the contacts table in the Lakeflow pipeline, then
+    run dbt once with --vars '{hubspot_contacts_history_rescan: true}' to fill it.
 -#}
 {% macro hubspot_lakeflow_absent_properties() %}
-    {#- Registry properties with no Lakeflow column, so the flat-column half of
-        the expression is skipped for them. Declared as a constant rather than
-        read from information_schema so a build never depends on a metadata
-        query succeeding. -#}
+    {#- Registry properties with no Lakeflow column. A constant rather than an
+        information_schema read, so a build never depends on metadata. -#}
     {{
         return(
             [
@@ -44,9 +33,8 @@
 {% macro hubspot_generated_contact_properties(
     seed="hubspot_contact_property_columns"
 ) %}
-    {#- Registry rows to generate, as dicts, in seed order. Empty at parse
-        time (execute=false). flat_column is the Lakeflow column holding the
-        same property, or none when Lakeflow does not carry it. -#}
+    {#- Registry rows to generate, in seed order. flat_column is the Lakeflow
+        column holding the same property, or none when Lakeflow lacks it. -#}
     {%- set absent = hubspot_lakeflow_absent_properties() -%}
     {%- set props = [] -%}
     {%- if execute -%}
@@ -82,26 +70,15 @@
     flat_column=none,
     properties_column="properties"
 ) %}
-    {#- Typed extraction of one HubSpot property. Two producers, one shape: the
-        raw input is the Lakeflow flat column when this is a Lakeflow row, else
-        the `properties` JSON path. HubSpot sends '' (not null) for unset values,
-        so typed casts go through nullif first. try_cast everywhere typed: this
-        model and its mart are views, so a plain cast would surface malformed
-        future values as query-time errors in Sigma rather than a build failure -
-        generated columns must never raise at query time. int stays int (not
-        bigint) and decimal(38,10) mirrors the Airbyte-typed source columns:
-        migrated columns keep their pre-registry types exactly. int_via_float
-        keeps number_of_seats_available's float round-trip so decimal-formatted
-        strings still land as ints instead of nulling out. boolean rows may carry
-        a custom word-to-boolean value map from the seed.
+    {#- Typed extraction of one HubSpot property, from the Lakeflow flat column
+        when present else the `properties` JSON path. HubSpot sends '' not null, so
+        typed casts go through nullif. try_cast throughout: the model and its mart
+        are views, so a raising cast would error in Sigma at query time instead of
+        failing a build. Types mirror the pre-registry columns exactly.
 
-        properties_column lets a caller pass the other side of the coalesce as a
-        null literal, so a Lakeflow row has no `properties` and a frozen Airbyte
-        row has no flat column. The flat side is cast to string before the
-        coalesce on purpose: the `string` branch below applies no conversion, and
-        one registry property (win_activated_user) arrives from Lakeflow as a real
-        BOOLEAN, which would otherwise make that column a boolean where
-        downstream expects a string. -#}
+        The flat side is cast to string before the coalesce because the `string`
+        branch applies no conversion, and win_activated_user arrives as a real
+        BOOLEAN which would otherwise change the column's type. -#}
     {%- set raw = (
         "get_json_object("
         ~ properties_column
@@ -150,21 +127,12 @@
 
 
 {% macro hubspot_contacts_history_watermark() %}
-    {#- The change filter on int__hubspot_contacts_history's incremental branch.
-
-        Default is >= not >: a row delivered with a timestamp equal to the stored
-        maximum is re-merged rather than skipped, which costs one tie window of
-        redundant work and closes the commonest skip. The residual, a row
-        delivered strictly older than the stored maximum, waits for its next
-        change; a per-row payload comparison would close it at the cost of
-        scanning every row across every column on every run.
-
-        hubspot_contacts_history_rescan drops the predicate, so one run re-merges
-        every current Lakeflow row. That is always safe, because the current
-        Lakeflow row is the newest truth for its id, and it is the recovery path
-        after a new registry property (the watermark would otherwise skip every
-        unchanged contact and leave the new column NULL) and after a Lakeflow
-        full refresh leaves the watermark ahead of a re-loaded table. -#}
+    {#- The incremental change filter. >= not >, so a row tied with the stored
+        maximum is re-merged rather than skipped; the residual is a row delivered
+        strictly older, which waits for its next change. The rescan var drops the
+        predicate so one run re-merges every current Lakeflow row, which is safe
+        because that row is the newest truth, and is how a new column gets filled
+        after a registry change. -#}
     {%- if not var("hubspot_contacts_history_rescan", false) %}
         where
             lastmodifieddate >= (

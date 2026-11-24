@@ -1773,12 +1773,9 @@ sources:
           merged-away or deleted contact is absent. The frozen history it lacks
           lives in int__hubspot_contacts_history.
         columns:
-          # Sensitive classifications copied from the airbyte_source HubSpot
-          # entries, mapped onto the column names Lakeflow actually has. The
-          # `properties` blob those entries also classify does not exist here;
-          # it is replaced by the flat columns below, which are the same data.
-          # These declarations are inert until the source-tag hook's schema
-          # scope covers this source; see the project's source-tag hook.
+          # Copied from the airbyte_source HubSpot entries and mapped to Lakeflow's
+          # column names; `properties` does not exist here. Inert until the
+          # source-tag hook's schema scope covers this source.
           - name: email
             config:
               meta:

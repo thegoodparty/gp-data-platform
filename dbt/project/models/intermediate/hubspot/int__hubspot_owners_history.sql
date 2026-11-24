@@ -1,20 +1,14 @@
--- Never-delete owners layer. Lakeflow mirrors HubSpot's current state and returns
--- no archived owners at all, so an owner archived after the seed would simply
--- vanish; this table keeps it, which is the only way hubspot_owner_teams can name
--- the owner on a historical contact.
+-- Never-delete owners layer: Lakeflow returns current owners only, so an archived
+-- owner would vanish, and this table is the only copy of the frozen ones.
 --
--- full_refresh=false is not decoration: the frozen Airbyte tables are the only
--- copy of the 113 archived owners, so a --full-refresh reaching this model would
--- rebuild it from current state and lose them permanently.
+-- full_refresh=false on purpose: a full refresh would rebuild from current state
+-- and lose the archived owners permanently. The seed unions both producers,
+-- Lakeflow winning; later runs read Lakeflow only, so a stale frozen row can
+-- never overwrite a newer one.
 --
--- The seed reads both producers, Lakeflow winning; every later run reads Lakeflow
--- only. Reading the frozen tables incrementally would let a stale row overwrite a
--- newer one, the same rollback the contacts layer guards against.
---
--- The owner's own `archived` flag is whatever it last saw, and it is not the
--- active/archived signal downstream: hubspot_owner_teams derives that from the
--- live Lakeflow snapshot, so an owner archived after the seed does not read as
--- active forever.
+-- The row's own `archived` flag is not the active/archived signal: owners staging
+-- derives that from the live Lakeflow snapshot, so an owner archived after the
+-- seed does not read as active forever.
 {{
     config(
         materialized="incremental",
@@ -24,9 +18,8 @@
     )
 }}
 
--- One normalized projection, used by every input. Airbyte's owners carry teams as
--- a JSON string and Lakeflow's as the already-parsed array Lakeflow hands back.
--- int()/bigint() match the types the staging models publish today.
+-- One normalized projection for every input: Airbyte carries teams as a JSON
+-- string, Lakeflow as the already-parsed array.
 {% set normalized_columns %}
     cast(null as string) as _airbyte_raw_id,
     cast(null as timestamp) as _airbyte_extracted_at,
@@ -102,9 +95,8 @@
             from {{ source("airbyte_source", "hubspot_api_owners_archived") }}
         ),
 
-        -- Precedence: Lakeflow, then Airbyte's active stream, then its archived
-        -- stream, so every id lands exactly once. The two Airbyte streams overlap
-        -- on reactivated owners, and the active row is the current state.
+        -- Lakeflow, then Airbyte active, then Airbyte archived: the two frozen
+        -- streams overlap on reactivated owners, so every id lands exactly once.
         seeded as (
             select *
             from lakeflow_owners

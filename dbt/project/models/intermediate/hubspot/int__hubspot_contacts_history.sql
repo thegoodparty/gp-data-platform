@@ -1,29 +1,18 @@
 -- depends_on: {{ ref("hubspot_contact_property_columns") }}
-{#-
-    Never-delete contacts layer. Lakeflow mirrors HubSpot's current state, so a
-    contact that merges away or is deleted simply stops being returned; Airbyte's
-    frozen history stops at 2026-11-17. This table is the only copy of anything
-    HubSpot has dropped since, which is what two things protect:
-
-    - full_refresh=false: a --full-refresh reaching this model would rebuild it
-      from current state and lose every post-cutover deletion permanently.
-    - The seed branch unions the frozen Airbyte rows, Lakeflow winning. Every
-      later run reads Lakeflow only. If an incremental run read the union, a
-      contact Lakeflow updated and HubSpot then dropped would be absent from
-      Lakeflow and present in the frozen table, so the merge on id would write
-      that stale 2026-11-17 row over the newer one and the record would silently
-      roll back.
-
-    The registry loop runs here, not in the staging model: this table stores the
-    typed columns the loop produces and staging projects them.
--#}
-{#- on_schema_change: a registry row added later becomes a column here and in
-    the staging model's loop. Without it the table never gains the column and
-    staging fails on an unresolved one, because full_refresh is refused here on
-    purpose. Appending is not enough by itself: the lastmodifieddate watermark
-    skips unchanged contacts, so the new column stays NULL until the one run with
-    hubspot_contacts_history_rescan set. Both steps are documented in the model
-    yaml and in the registry macro. -#}
+-- Never-delete contacts layer. Lakeflow mirrors HubSpot's current state, so a
+-- merged-away or deleted contact stops being returned, and this table is the only
+-- copy of anything dropped after the frozen Airbyte extract ends.
+--
+-- Two rules protect it. full_refresh=false, because a full refresh would rebuild
+-- from current state and lose those rows permanently. And only the seed branch
+-- unions frozen Airbyte (Lakeflow winning); later runs read Lakeflow alone, or a
+-- stale frozen row would overwrite a newer one on the run after HubSpot drops it.
+--
+-- The registry loop runs here rather than in staging, so the columns are typed.
+{#- on_schema_change so a later registry row becomes a column here instead of
+    leaving staging to select a missing one. Appending alone leaves it NULL, since
+    the watermark skips unchanged contacts, so one run with
+    hubspot_contacts_history_rescan fills it. -#}
 {{
     config(
         materialized="incremental",
@@ -36,13 +25,10 @@
 
 {% set props = hubspot_generated_contact_properties() %}
 
-{#- One typed column list per producer, same column names in the same order so a
-    union lines up positionally. A Lakeflow row has no `properties` blob and a
-    frozen Airbyte row has no flat column, so each side passes the other as a null
-    literal and the expression's coalesce is exact rather than a precedence rule.
-    The absent-nine properties carry flat_column=none, so they read the JSON path
-    only: NULL on a Lakeflow row, and the real value on a frozen Airbyte row, which
-    costs nothing because that is the one-time seed branch. -#}
+{#- One typed column list per producer, same names in the same order. Each side
+    passes the other as a null literal, so the expression's coalesce is exact
+    rather than a precedence rule. The nine properties Lakeflow lacks carry
+    flat_column=none and so read only the JSON path. -#}
 {% set lakeflow_typed_columns %}
     {%- for prop in props %}
         , {{ hubspot_contact_property_expression(
@@ -70,8 +56,6 @@
 {% endset %}
 
 {% if is_incremental() %}
-    {#- Lakeflow only. A row missing from Lakeflow may have been deleted, and the
-        frozen row for it is older than what this table already holds. -#}
     select
         cast(hs_object_id as string) as id,
         case
@@ -80,12 +64,11 @@
         end as companies,
         cast(createdate as timestamp) as created_at,
         cast(lastmodifieddate as timestamp) as updated_at,
-        -- Carried because the filter below reads it.
+        -- Carried because the watermark filter reads it.
         cast(lastmodifieddate as timestamp) as lastmodifieddate
         {{ lakeflow_typed_columns }},
-        -- Which producer the row's winning values came from. Not published: the
-        -- staging model drops it. It makes the seed window auditable and it is
-        -- what lets a cast-loss check compare within one source at a time.
+        -- Which producer the row won from. Not published; the cast-loss test
+        -- compares within one source at a time with it.
         'lakeflow' as _source
     from
         {{ source("lakeflow_source", "contacts") }}
@@ -121,9 +104,7 @@
             where id not in (select id from lakeflow_contacts where id is not null)
         ),
 
-        -- Lakeflow wins for any id it has; the frozen rows fill in the contacts
-        -- HubSpot has dropped since 2026-11-17, which is why the union lives in
-        -- the seed branch alone.
+        -- Lakeflow wins; frozen rows fill in the contacts HubSpot has dropped.
         seeded as (
             select lakeflow_contacts.*, 'lakeflow' as _source
             from lakeflow_contacts

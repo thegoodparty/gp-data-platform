@@ -1,25 +1,16 @@
 -- Committed guard against silent cast loss on the generated hubspot contact
--- columns. The generation macro uses try_cast/cast_to_boolean on purpose
--- (the model and its mart are views, so a raising cast would error inside
--- Sigma at query time) — the trade-off is that a malformed future HubSpot
--- value becomes NULL silently. This test makes that loss loud: for every
--- typed generated column, non-empty raw values must equal cast survivors.
--- Error severity on purpose: HubSpot enforces property types at entry, so
--- real loss here means a format or schema drift (a property type changed,
--- a datetime representation shifted) — exactly the class of change that
--- must block a build rather than silently null a Sigma column.
--- Registry rows flagged cast_loss_expected are excluded: their source
--- properties legitimately carry non-conforming values (free-text ids,
--- out-of-map enum words) that the cast nulls by design, unchanged from the
--- pre-registry hand-written expressions.
+-- columns. The generation macro uses try_cast/cast_to_boolean on purpose (the
+-- model and its mart are views, so a raising cast would error inside Sigma at
+-- query time), so a malformed future value becomes NULL silently; this makes that
+-- loss loud, and it must block a build rather than null a Sigma column.
+-- Registry rows flagged cast_loss_expected are excluded: their source properties
+-- legitimately carry values the cast nulls by design.
 --
--- The comparison is per producer, not per model. Staging now holds rows whose
--- raw input was a Lakeflow flat column and rows whose raw input was the Airbyte
--- `properties` JSON blob, so comparing one population's raw count against the
--- whole model's non-null count reads a legitimate Lakeflow-only value as loss and
--- hides a real Lakeflow cast loss behind an unrelated frozen value. The history
--- layer's _source column says which producer a row's winning values came from, so
--- each side is compared against its own raw input.
+-- The comparison is per producer. Staging holds rows whose raw input was a
+-- Lakeflow flat column and rows whose raw input was the Airbyte JSON blob, so
+-- comparing one population's raw count against the whole model's non-null count
+-- reads a legitimate Lakeflow-only value as loss and hides a real Lakeflow loss.
+-- The history layer's _source says which producer a row came from.
 -- depends_on: {{ ref("hubspot_contact_property_columns") }}
 -- depends_on: {{ ref("int__hubspot_contacts_history") }}
 -- depends_on: {{ ref("stg_airbyte_source__hubspot_api_contacts") }}

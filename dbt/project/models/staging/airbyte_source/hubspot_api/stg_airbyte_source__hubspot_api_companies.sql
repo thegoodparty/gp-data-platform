@@ -1,17 +1,13 @@
--- Reads Lakeflow's companies table, not the Airbyte source directly: the name's
--- "airbyte" now covers two producers. The frozen Airbyte table stays readable, and
--- the two columns Lakeflow does not carry come from there by id.
+-- Reads Lakeflow's companies table, with the two columns Lakeflow does not carry
+-- joined from the frozen Airbyte table by id.
 --
--- Live ids only, deliberately: company_viability_hubspot INNER-joins this model as
--- its proof that a Record ID still exists in HubSpot, so a company that is frozen
--- but no longer in HubSpot would emit a deleted Record ID into a CSV a human
--- imports, and the import would error.
+-- Live ids only: company_viability_hubspot INNER-joins this model as its proof a
+-- Record ID still exists, so a frozen-only company would put a deleted id into an
+-- import CSV and the import would error.
 --
--- Lakeflow hands every company property over as text, so the numeric and boolean
--- columns are cast here, matching the registry's own patterns: a double round-trip,
--- because float is 32-bit here and rounds integers above about 16.7 million (a
--- statewide vote total can exceed that), and because float-formatted values
--- ("1.0", "498.0000000000") null out under a plain try_cast to int.
+-- Lakeflow hands every property over as text, so the numeric casts use a double
+-- round-trip: float is 32-bit here and rounds above about 16.7 million, and
+-- float-formatted values ("1.0") null out under a plain try_cast to int.
 with
     lakeflow_companies as (
         select
@@ -54,11 +50,9 @@ with
         from {{ source("lakeflow_source", "companies") }}
     ),
 
-    -- The two columns Lakeflow has no source for. candidates_seats is read by
-    -- int__hubspot_contacts_w_companies, which coalesces it into its seat column,
-    -- so dropping it would move published values. contacts is the association
-    -- array; no Lakeflow table carries associations, and nothing in dbt reads this
-    -- model's copy, so the frozen value is kept rather than nulled.
+    -- The two columns Lakeflow has no source for. candidates_seats feeds a
+    -- coalesce in int__hubspot_contacts_w_companies, so dropping it would move
+    -- published values.
     frozen_extras as (
         select
             cast(id as string) as id,
@@ -120,9 +114,6 @@ select
     {{ cast_to_boolean("uncontested", ["uncontested"], ["contested"]) }}
     as is_uncontested,
     number_of_opponents,
-    -- Double, not float: float is 32-bit here and rounds above about 16.7 million,
-    -- which statewide vote totals can exceed. No current value is affected; this
-    -- is preventive.
     try_cast(
         try_cast(nullif(trim(seats_available), '') as double) as int
     ) as seats_available,
