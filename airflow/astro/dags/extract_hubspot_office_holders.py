@@ -62,7 +62,11 @@ import os
 
 from airflow.sdk import Param, Variable, dag, get_current_context, task
 from include.custom_functions.databricks_utils import connect_from_conn_id
-from include.custom_functions.hubspot_office_holders import extract_office_holders, make_session
+from include.custom_functions.hubspot_office_holders import (
+    attempt_run_id,
+    extract_office_holders,
+    make_session,
+)
 from pendulum import datetime, duration
 
 t_log = logging.getLogger("airflow.task")
@@ -107,7 +111,7 @@ def extract_hubspot_office_holders():
     def extract() -> dict:
         context = get_current_context()
         dry_run = bool(context["params"]["dry_run"])
-        run_id = context["dag_run"].run_id
+        run_id = attempt_run_id(context)
 
         # A dry run opens no connection, so it needs no Databricks credential: it exists to
         # show what the sweep would land.

@@ -57,10 +57,19 @@
             qualify row_number() over (order by completed_at desc, run_id desc) = 1
         ),
 
+        -- One row per record within the run, newest load first. The run id is per task
+        -- attempt, so a retry is its own run; this covers the remaining case, an INSERT
+        -- that the server applied before answering a 5xx and that the client retried.
         snapshot as (
             select landing_table.*
             from {{ landing }} as landing_table
             inner join complete_run on landing_table.run_id = complete_run.run_id
+            qualify
+                row_number() over (
+                    partition by landing_table.record_id
+                    order by landing_table.loaded_at desc
+                )
+                = 1
         ),
 
         listed_merges as (

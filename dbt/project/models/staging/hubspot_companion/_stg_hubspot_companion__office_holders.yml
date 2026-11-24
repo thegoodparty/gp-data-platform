@@ -9,9 +9,12 @@ models:
 
       The loader sweeps every record on every run, so one run is a complete snapshot, and this
       model reads the newest run that carries a completion marker. A partial run never lands a
-      marker, so it leaves the previous complete snapshot in force. That is what makes a
-      deletion drop out here: the sweep no longer returns the record, and the snapshot it lands
-      does not contain it.
+      marker, so it leaves the previous complete snapshot in force. It is still one row per
+      record if a run's INSERT was applied twice, because a duplicate within a run resolves to
+      its newest load.
+
+      A deletion drops out because the sweep no longer returns the record, so the snapshot it
+      lands does not contain it.
     columns:
       - name: record_id
         description: The HubSpot record id of the Office Holder. Unique per live record.
@@ -20,15 +23,16 @@ models:
           - unique
       - name: gp_api_elected_office_id
         description: >
-          gp-api `elected_office.id`, the key the app upserts on. Unique where set, because a
+          gp-api `elected_office.id`, the key the app upserts on. A blank normalises to null,
+          so "set" means the same thing here as in `origin`. Unique where set, because a
           duplicate would mean two live records for one product office.
         data_tests:
           - unique
       - name: gp_elected_official_term_id
         description: >
-          One BallotReady or TechSpeed term, the key the nightly feed upserts on. Unique where
-          set. Expected to be empty until the feed goes live: every record today was created by
-          the app.
+          One BallotReady or TechSpeed term, the key the nightly feed upserts on. A blank
+          normalises to null, as above. Unique where set. Expected to be empty until the feed
+          goes live: every record today was created by the app.
         data_tests:
           - unique
       - name: gp_person_id

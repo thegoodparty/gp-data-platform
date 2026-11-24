@@ -64,8 +64,9 @@ def test_one_task_because_the_landing_is_one_snapshot():
     assert [task.task_id for task in _DAG.tasks] == ["extract"]
 
 
-def test_the_run_id_comes_from_the_dag_run():
-    """Staging reads the newest complete run, so the id has to identify one sweep."""
+def test_the_run_id_combines_the_dag_run_and_the_attempt():
+    """Staging reads the newest complete run, so the id has to identify one task attempt: a
+    retry under the same dag run must not append a second copy under the id it then marks."""
     extract = _callable("extract")
     globals_ = extract.__globals__
 
@@ -110,14 +111,18 @@ def test_the_run_id_comes_from_the_dag_run():
                     )
                 ),
                 "get_current_context": Mock(
-                    return_value={"params": {"dry_run": False}, "dag_run": Mock(run_id="scheduled__1")}
+                    return_value={
+                        "params": {"dry_run": False},
+                        "dag_run": Mock(run_id="scheduled__1"),
+                        "ti": Mock(try_number=2),
+                    }
                 ),
             },
         ),
     ):
         extract()
 
-    assert captured["run_id"] == "scheduled__1"
+    assert captured["run_id"] == "scheduled__1.2"
     assert captured["token"] == "tok"
     assert captured["schema"] == "raw.hubspot"
     assert captured["dry_run"] is False
@@ -147,7 +152,11 @@ def test_a_dry_run_opens_no_connection():
             {
                 "Variable": MagicMock(get=Mock(return_value="x")),
                 "get_current_context": Mock(
-                    return_value={"params": {"dry_run": True}, "dag_run": Mock(run_id="manual__1")}
+                    return_value={
+                        "params": {"dry_run": True},
+                        "dag_run": Mock(run_id="manual__1"),
+                        "ti": Mock(try_number=1),
+                    }
                 ),
             },
         ),

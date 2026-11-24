@@ -22,6 +22,12 @@ so a run that dies halfway leaves the previous complete snapshot in force. A mar
 a single atomic statement is impossible here: the landing spans a page loop and one
 association read per direction.
 
+The run id is per task attempt (`attempt_run_id`), not per dag run, because Airflow retries
+a task under the same dag run: a retry after a failed insert chunk or a failed marker write
+would otherwise append a second copy of every record under the id whose marker it then
+writes. And because `execute_with_retry` can resend an INSERT the server applied before it
+returned a 5xx, the staging model also takes one row per record id within a run.
+
 **Links are read one v4 batch call per direction, taking every association type.**
 `/crm/v4/associations/2-65502604/contacts/batch/read` (and the same for `companies`)
 returns each linked id once with all of its association types listed. The app writes
@@ -238,6 +244,20 @@ if _landed_row_fields() != INSERT_COLUMNS:
     raise RuntimeError(
         f"landing fields {_landed_row_fields()} must match the insert columns {INSERT_COLUMNS}, in order"
     )
+
+
+def attempt_run_id(context) -> str:
+    """The landing run id for one task attempt: the dag run's id plus the try number.
+
+    `dag_run.run_id` alone is not enough, because Airflow retries a task under the same dag
+    run: a retry after a failed chunk, or after the marker write failed, would append a
+    second copy of every record under the id whose marker it then writes. A per-attempt id
+    makes a retry its own run, so the failed attempt's rows are readable by nothing and the
+    retry's snapshot is the only one the marker covers.
+    """
+    dag_run_id = context["dag_run"].run_id
+    try_number = getattr(context.get("ti") or context.get("task_instance"), "try_number", 1)
+    return f"{dag_run_id}.{try_number}"
 
 
 class HubSpotError(RuntimeError):

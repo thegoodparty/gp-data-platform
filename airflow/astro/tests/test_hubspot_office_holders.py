@@ -5,6 +5,7 @@ calls HubSpot, and none needs the loader token.
 """
 
 import json
+from unittest.mock import Mock
 
 import pytest
 import requests
@@ -22,6 +23,7 @@ from include.custom_functions.hubspot_office_holders import (
     HubSpotSweepError,
     _landed_row_fields,
     _row_values,
+    attempt_run_id,
     build_landing_rows,
     extract_office_holders,
     fetch_links,
@@ -484,6 +486,40 @@ def test_the_marker_is_written_after_every_record_row():
         module.write_completion_marker = original_marker
 
     assert order == ["rows", "marker"]
+
+
+def test_a_retried_attempt_lands_under_its_own_run_id():
+    """Airflow retries a task under the same dag run. Landing a retry under the dag run id
+    would append a second copy of every record under the id whose marker it then writes, so
+    the readable snapshot would hold each record twice."""
+    first = attempt_run_id({"dag_run": Mock(run_id="scheduled__1"), "ti": Mock(try_number=1)})
+    retried = attempt_run_id({"dag_run": Mock(run_id="scheduled__1"), "ti": Mock(try_number=2)})
+
+    assert first == "scheduled__1.1"
+    assert retried == "scheduled__1.2"
+    assert first != retried
+
+
+def test_the_attempt_run_id_defaults_to_one_when_no_task_instance_is_in_context():
+    assert attempt_run_id({"dag_run": Mock(run_id="manual__1")}) == "manual__1.1"
+
+
+def test_the_second_attempts_snapshot_supersedes_the_firsts():
+    """A retry after a failed chunk writes its own marker, and that is the run staging reads."""
+    connection = FakeConnection()
+    session = FakeSession(
+        [
+            _page([_record(900)]),
+            FakeResponse(body={"results": []}),
+            FakeResponse(body={"results": []}),
+        ]
+    )
+
+    extract_office_holders(connection, session, TOKEN, "cat", "sch", "scheduled__1.2")
+
+    statements = _statements(connection)
+    marker = next(parameters for query, parameters in statements if _is_marker_insert(query))
+    assert marker["run_id_0"] == "scheduled__1.2"
 
 
 def test_a_sweep_that_errors_before_the_marker_writes_no_marker():

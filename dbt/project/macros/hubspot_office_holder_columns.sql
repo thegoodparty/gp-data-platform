@@ -17,12 +17,16 @@
         ("city", "string", "city"),
         ("district", "string", "district"),
         ("elected_date", "date", "try_cast(elected_date as date)"),
-        ("gp_api_elected_office_id", "string", "gp_api_elected_office_id"),
+        (
+            "gp_api_elected_office_id",
+            "string",
+            "nullif(trim(gp_api_elected_office_id), '')",
+        ),
         ("gp_candidacy_id", "string", "gp_candidacy_id"),
         (
             "gp_elected_official_term_id",
             "string",
-            "gp_elected_official_term_id",
+            "nullif(trim(gp_elected_official_term_id), '')",
         ),
         ("gp_person_id", "string", "gp_person_id"),
         ("is_appointed", "boolean", cast_to_boolean("is_appointed")),
