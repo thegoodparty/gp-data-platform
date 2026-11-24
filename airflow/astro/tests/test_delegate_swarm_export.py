@@ -11,9 +11,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-# Stub the runtime modules so this collects in the airflow env, the dbt env or bare, matching
-# test_postgres_utils.py. Direct assignment (not setdefault): the dbt env ships an
-# incompatible airflow.sdk.
+# Stub the runtime modules that are not importable, so this collects in the airflow env, the dbt env
+# or bare. Only the genuinely missing ones are stubbed: replacing a module that is present poisons
+# `sys.modules` for every later test file in the same process, and the DAG suites import real Airflow
+# at collection time (which is exactly what makes them worth running).
 _STUBS = (
     "airflow",
     "airflow.sdk",
@@ -24,9 +25,11 @@ _STUBS = (
     "databricks.sdk.core",
 )
 for _mod in _STUBS:
-    sys.modules[_mod] = MagicMock()
+    try:
+        __import__(_mod)
+    except ImportError:
+        sys.modules[_mod] = MagicMock()
 
-from include.custom_functions import delegate_swarm_export  # noqa: E402
 from include.custom_functions.delegate_swarm_export import (  # noqa: E402
     SESSION_COST,
     SESSION_COST_EXPORTED_COLUMNS,
@@ -47,6 +50,7 @@ from include.custom_functions.delegate_swarm_export import (  # noqa: E402
     export_prefix,
     land_export,
     land_exports,
+    plan_landings,
 )
 
 # ---------------------------------------------------------------------------
@@ -238,9 +242,9 @@ def test_ensure_landing_table_creates_schema_then_table_idempotently(table):
         assert f"`{name}` {column_type}" in statements[1], f"{table.name}.{name}"
 
 
-def test_ensure_landing_table_quotes_the_reserved_word_columns():
-    """`is_error` and `status` are fine bare, but `task_id`-style names and `status` are only safe
-    quoted, and the DDL quotes every one for consistency."""
+def test_ensure_landing_table_quotes_every_column_name():
+    """Identifiers are backtick-quoted so a name that collides with a reserved word is safe without a
+    per-name list, and so the DDL is the same shape for every column."""
     connection, cursor = _fake_connection()
     ensure_landing_table(connection, "catalog", "airflow_source", TASK_EDGE)
     statement = cursor.execute.call_args_list[1].args[0]
@@ -355,7 +359,7 @@ def test_copy_into_quotes_the_prefix_as_a_validated_literal():
     """The COPY INTO source position takes a location, not a bound parameter, so the path is
     validated and then quoted. The validation is the guard: it is what stops a prefix ending the
     literal or starting a second statement."""
-    sql = build_copy_sql("catalog", "airflow_source", "s3://b/p")
+    sql = build_copy_sql("catalog", "airflow_source", "s3://b/p", SESSION_COST)
     assert "from 's3://b/p'" in sql
 
 
@@ -381,7 +385,7 @@ def test_copy_into_quotes_the_prefix_as_a_validated_literal():
 )
 def test_copy_into_refuses_a_prefix_that_could_escape_the_literal(path):
     with pytest.raises(ValueError):
-        build_copy_sql("catalog", "airflow_source", path)
+        build_copy_sql("catalog", "airflow_source", path, SESSION_COST)
 
 
 def test_copy_into_does_not_qualify_the_projection_with_an_aliased_table():
@@ -405,7 +409,7 @@ def test_copy_into_never_selects_star(table):
 # ---------------------------------------------------------------------------
 
 
-def test_land_export_binds_the_prefix_and_returns_the_row_count():
+def test_land_export_quotes_the_prefix_and_returns_the_row_count():
     connection, cursor = _fake_connection()
     cursor.fetchall.return_value = [("cost-1.ndjson", "SUCCESS", 12)]
     cursor.description = [
@@ -431,24 +435,28 @@ def test_land_export_binds_the_prefix_and_returns_the_row_count():
     assert "copy into" in statement.lower()
 
 
-def test_land_exports_creates_both_tables_before_landing_either(monkeypatch):
+def test_land_exports_creates_both_tables_before_landing_either():
     """A landing table that does not exist has to fail the run before any file is touched, not
-    halfway through. Ordering is the whole content of this test, so both the DDL and the landings
-    are recorded in one list."""
+    halfway through. Ordering is the whole content of this test, so the DDL and the COPY statements
+    are recorded in one list as the cursor sees them."""
     events = []
     connection, cursor = _fake_connection()
 
     def record_execute(statement, *_args, **_kwargs):
-        kind = "create_schema" if statement.startswith("CREATE SCHEMA") else "create_table"
-        name = statement.rsplit(".", 1)[-1].split(" ", 1)[0].strip("`") if kind == "create_table" else ""
-        events.append((kind, name))
+        if statement.startswith("CREATE SCHEMA"):
+            events.append(("create_schema", ""))
+        elif statement.startswith("CREATE TABLE"):
+            events.append(("create_table", statement.rsplit("`.`", 1)[1].split("`")[0]))
+        else:
+            events.append(("copy", statement.rsplit("`.`", 1)[1].split("`")[0]))
+        cursor.description = [
+            ("file", "STRING", None, None, None, None, None),
+            ("status", "STRING", None, None, None, None, None),
+            ("rows_inserted", "BIGINT", None, None, None, None, None),
+        ]
+        cursor.fetchall.return_value = [("file", "SUCCESS", 5)]
 
     cursor.execute.side_effect = record_execute
-    monkeypatch.setattr(
-        delegate_swarm_export,
-        "land_export",
-        lambda _c, _cat, _s, _b, _p, table: (events.append(("land", table.name)), 5)[1],
-    )
 
     counts = land_exports(
         connection,
@@ -464,25 +472,33 @@ def test_land_exports_creates_both_tables_before_landing_either(monkeypatch):
     assert counts == {SESSION_COST_TABLE_NAME: 5, TASK_EDGE_TABLE_NAME: 5}
     # Both tables created before either prefix is read: a missing relation then fails the run before
     # any file is landed rather than between the two tables.
-    assert [event[0] for event in events] == ["create_schema", "create_table"] * 2 + ["land", "land"]
-    assert [event[1] for event in events if event[0] == "create_table"] == [
+    assert [event[0] for event in events] == ["create_schema", "create_table"] * 2 + ["copy", "copy"]
+    assert [event[1] for event in events if event[0] != "create_schema"] == [
+        SESSION_COST_TABLE_NAME,
+        TASK_EDGE_TABLE_NAME,
         SESSION_COST_TABLE_NAME,
         TASK_EDGE_TABLE_NAME,
     ]
 
 
-def test_land_exports_lands_the_cost_file_first(monkeypatch):
+def test_land_exports_lands_the_cost_file_first():
     """The export writes the cost file first and stops on a failure. Landing in the same order means a
     run that fails between the two leaves the cost rows, which the daily mart can read, and the edges
     arrive on the next run's window."""
+    connection, cursor = _fake_connection()
     seen = []
-    connection, _ = _fake_connection()
 
-    monkeypatch.setattr(
-        delegate_swarm_export,
-        "land_export",
-        lambda _c, _cat, _s, _b, _p, table: (seen.append(table.name), 0)[1],
-    )
+    def record_execute(statement, *_args, **_kwargs):
+        if statement.lower().startswith("copy into"):
+            seen.append(statement.rsplit("`.`", 1)[1].split("`")[0])
+        cursor.description = [
+            ("file", "STRING", None, None, None, None, None),
+            ("status", "STRING", None, None, None, None, None),
+            ("rows_inserted", "BIGINT", None, None, None, None, None),
+        ]
+        cursor.fetchall.return_value = [("file", "SUCCESS", 0)]
+
+    cursor.execute.side_effect = record_execute
 
     land_exports(
         connection,
@@ -496,6 +512,49 @@ def test_land_exports_lands_the_cost_file_first(monkeypatch):
     )
 
     assert seen == [SESSION_COST_TABLE_NAME, TASK_EDGE_TABLE_NAME]
+
+
+def test_a_bad_second_prefix_fails_before_the_first_table_is_touched():
+    """Both statements are built before either is executed. A blank or malformed edge prefix is a
+    Variable misconfiguration, and the next export window cannot heal one: without this, every run
+    would land costs with no edges until an operator noticed, so the run has to fail before the cost
+    COPY INTO commits anything."""
+    connection, cursor = _fake_connection()
+
+    with pytest.raises(ValueError):
+        land_exports(
+            connection,
+            "catalog",
+            "airflow_source",
+            "bucket",
+            (
+                Export(SESSION_COST, "delegate-swarm/session-cost"),
+                Export(TASK_EDGE, "   "),
+            ),
+        )
+
+    cursor.execute.assert_not_called()
+
+
+def test_plan_landings_builds_every_statement_up_front():
+    plans = plan_landings(
+        "catalog",
+        "airflow_source",
+        "bucket",
+        (
+            Export(SESSION_COST, "delegate-swarm/session-cost"),
+            Export(TASK_EDGE, "delegate-swarm/task-edge"),
+        ),
+    )
+
+    assert [plan.table.name for plan in plans] == [SESSION_COST_TABLE_NAME, TASK_EDGE_TABLE_NAME]
+    assert [plan.path for plan in plans] == [
+        "s3://bucket/delegate-swarm/session-cost",
+        "s3://bucket/delegate-swarm/task-edge",
+    ]
+    for plan in plans:
+        assert plan.table.name in plan.sql
+        assert plan.path in plan.sql
 
 
 # ---------------------------------------------------------------------------

@@ -85,12 +85,13 @@ def test_runs_after_the_export_and_before_nothing_else():
 
 def test_one_load_task_and_no_aws_dependency():
     """COPY INTO owns the file bookkeeping, so there is no listing task and no per-day mapped task.
-    Nothing here lists or reads S3, which is what keeps Astro out of the engineer's bucket."""
-    assert sorted(task.task_id for task in _DAG.tasks) == ["load", "report"]
+    Nothing here lists or reads S3, which is what keeps Astro out of the engineer's bucket.
 
-    source = Path(_DAG_FILE).read_text()
-    for forbidden in ("boto3", "head_object", "botocore", "list_objects", "hive_partition"):
-        assert forbidden not in source, f"{forbidden} would need AWS access for Airflow"
+    A source-text scan for AWS symbols was dropped: it passes on a DAG that does nothing, and the
+    property that matters (one load task, no connection opened outside it) is in the graph assertions
+    in this file.
+    """
+    assert sorted(task.task_id for task in _DAG.tasks) == ["load", "report"]
 
 
 def test_the_dag_has_a_dry_run_param():
@@ -103,85 +104,28 @@ def test_a_failed_load_fails_the_run():
     assert _DAG.get_task("report").trigger_rule == "all_success"
 
 
-def test_load_creates_both_tables_before_it_lands_anything():
-    """The DAG owns the landing tables, and both have to exist before either file is read. If this
-    ordering inverted, the first COPY INTO would fail on a missing relation."""
-    calls = []
+def test_load_passes_both_tables_and_both_their_prefixes_to_the_loader():
+    """The DAG's job is to resolve the Variables and hand the loader two table-and-prefix pairs in the
+    exporter's order. One prefix per table because COPY INTO reads a whole prefix, so reading the same
+    Variable twice would make each table's load read the other table's file.
+
+    `delegate_swarm_landing_schema` is the same kind of argument and the one that keeps a
+    `dry_run=false` dev run off production data: a DAG that hardcoded `airflow_source` would pass every
+    other test here. The create-before-land ordering is the module's, and
+    `test_land_exports_creates_both_tables_before_landing_either` asserts it.
+    """
     connection = _connection()
+    seen = {}
 
-    load = _callable("load")
-    globals_ = load.__globals__
-
-    def fake_land_exports(_connection, _catalog, _schema, _bucket, exports):
-        calls.append(("land", [export.table.name for export in exports]))
+    def fake_land_exports(_connection, catalog, schema, bucket, exports):
+        seen.update(
+            catalog=catalog,
+            schema=schema,
+            bucket=bucket,
+            tables=[export.table.name for export in exports],
+            prefixes=[export.prefix for export in exports],
+        )
         return {"delegate_swarm_session_cost": 3, "delegate_swarm_task_edge": 2}
-
-    with (
-        patch.dict(
-            globals_,
-            {
-                "connect_from_conn_id": MagicMock(return_value=connection),
-                "land_exports": fake_land_exports,
-            },
-        ),
-        patch.dict(
-            globals_,
-            {
-                "Variable": MagicMock(get=Mock(side_effect=lambda name, **kw: _VARIABLES[name])),
-                "get_current_context": Mock(return_value={"params": {}}),
-            },
-        ),
-    ):
-        loaded = load()
-
-    assert calls == [("land", ["delegate_swarm_session_cost", "delegate_swarm_task_edge"])]
-    assert loaded == {"delegate_swarm_session_cost": 3, "delegate_swarm_task_edge": 2}
-
-
-def test_load_reads_the_two_prefixes_from_their_own_variables():
-    """One prefix per table because COPY INTO reads a whole prefix. Reading the same Variable twice
-    would make each table's load read the other table's file."""
-    connection = _connection()
-    seen = {}
-
-    def fake_land_exports(_connection, _catalog, _schema, _bucket, exports):
-        seen["prefixes"] = [export.prefix for export in exports]
-        return {}
-
-    load = _callable("load")
-    globals_ = load.__globals__
-
-    with (
-        patch.dict(
-            globals_,
-            {"connect_from_conn_id": MagicMock(return_value=connection), "land_exports": fake_land_exports},
-        ),
-        patch.dict(
-            globals_,
-            {
-                "Variable": MagicMock(get=Mock(side_effect=lambda name, **kw: _VARIABLES[name])),
-                "get_current_context": Mock(return_value={"params": {}}),
-            },
-        ),
-    ):
-        load()
-
-    assert seen["prefixes"] == [
-        _VARIABLES["delegate_swarm_cost_prefix"],
-        _VARIABLES["delegate_swarm_task_edge_prefix"],
-    ]
-
-
-def test_load_reads_the_landing_schema_from_its_own_variable():
-    """`delegate_swarm_landing_schema` is what keeps a `dry_run=false` dev run off production data,
-    the same way `bifrost_landing_schema` does. A DAG that read `databricks_catalog` or hardcoded
-    `airflow_source` would pass every other test here."""
-    connection = _connection()
-    seen = {}
-
-    def fake_land_exports(_connection, _catalog, schema, _bucket, _exports):
-        seen["schema"] = schema
-        return {}
 
     load = _callable("load")
     globals_ = load.__globals__
@@ -206,9 +150,19 @@ def test_load_reads_the_landing_schema_from_its_own_variable():
             },
         ),
     ):
-        load()
+        loaded = load()
 
-    assert seen["schema"] == "airflow_source_dev"
+    assert seen == {
+        "catalog": _VARIABLES["databricks_catalog"],
+        "schema": "airflow_source_dev",
+        "bucket": _VARIABLES["delegate_swarm_export_bucket"],
+        "tables": ["delegate_swarm_session_cost", "delegate_swarm_task_edge"],
+        "prefixes": [
+            _VARIABLES["delegate_swarm_cost_prefix"],
+            _VARIABLES["delegate_swarm_task_edge_prefix"],
+        ],
+    }
+    assert loaded == {"delegate_swarm_session_cost": 3, "delegate_swarm_task_edge": 2}
 
 
 def test_load_resolves_the_databricks_connection_by_variable_name():

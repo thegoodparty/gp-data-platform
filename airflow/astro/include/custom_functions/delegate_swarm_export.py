@@ -143,10 +143,6 @@ def _exported(columns: tuple[tuple[str, str], ...]) -> tuple[tuple[str, str], ..
     return tuple((name, column_type) for name, column_type in columns if name not in _SERVER_SET_COLUMNS)
 
 
-SESSION_COST_EXPORTED_COLUMNS = _exported(SESSION_COST_LANDING_COLUMNS)
-TASK_EDGE_EXPORTED_COLUMNS = _exported(TASK_EDGE_LANDING_COLUMNS)
-
-
 class SessionCostRow(NamedTuple):
     """One cost landing row, minus `loaded_at`, which COPY INTO stamps server-side."""
 
@@ -205,12 +201,24 @@ TASK_EDGE = LandingTable(TASK_EDGE_TABLE_NAME, TASK_EDGE_LANDING_COLUMNS, TaskEd
 # rows the daily mart can still read.
 TABLES: tuple[LandingTable, ...] = (SESSION_COST, TASK_EDGE)
 
+# The columns the files actually carry, named the way the Bifrost module names its one list.
+SESSION_COST_EXPORTED_COLUMNS = SESSION_COST.exported_columns
+TASK_EDGE_EXPORTED_COLUMNS = TASK_EDGE.exported_columns
+
 
 class Export(NamedTuple):
     """One table and the prefix its files land from."""
 
     table: LandingTable
     prefix: str
+
+
+class LandingPlan(NamedTuple):
+    """One table, the location it reads, and the statement that reads it."""
+
+    table: LandingTable
+    path: str
+    sql: str
 
 
 def check_row_types(tables: Sequence[LandingTable]) -> None:
@@ -246,7 +254,7 @@ def export_prefix(bucket: str, prefix: str) -> str:
     return f"s3://{bucket}/{cleaned}"
 
 
-def ensure_landing_table(connection, catalog: str, schema: str, table: LandingTable = SESSION_COST) -> None:
+def ensure_landing_table(connection, catalog: str, schema: str, table: LandingTable) -> None:
     """Create one append-only landing table if it is absent.
 
     The DAG owns this, not a migration, for the same reason the BallotReady extractor does: the
@@ -278,10 +286,10 @@ def _validate_identifier(name: str, value: str) -> str:
     return value
 
 
-def build_copy_sql(catalog: str, schema: str, path: str, table: LandingTable = SESSION_COST) -> str:
+def build_copy_sql(catalog: str, schema: str, path: str, table: LandingTable) -> str:
     """The COPY INTO that lands whatever one prefix holds and has not landed before.
 
-    Four choices worth stating, because each one is a failure mode:
+    Five choices worth stating, because each one is a failure mode:
 
     - **No target column list.** The mapping is the projection's aliases: without a target list,
       Databricks maps the query's output columns to the table **by name**, not by position, so each
@@ -353,17 +361,32 @@ def land_export(connection, catalog: str, schema: str, bucket: str, prefix: str,
     A re-run loads nothing: COPY INTO remembers which files it has read. That is why there is no
     listing step, no per-run file bookkeeping and no anti-join here. The only thing this needs to get
     right is the prefix and the projection.
-    """
-    path = export_prefix(bucket, prefix)
-    sql = build_copy_sql(catalog, schema, path, table)
-    with contextlib.closing(connection.cursor()) as cursor:
-        execute_with_retry(cursor, sql)
-        rows = cursor.fetchall() or []
-        columns = [description[0] for description in (cursor.description or [])]
 
-    count = rows_inserted(rows, columns)
-    logger.info("delegate swarm: %d row(s) landed in %s from %s", count, table.name, path)
-    return count
+    The single-table form of `land_exports`, and it exists for the tests and for a one-off run: both
+    go through the same path, so neither can land with a projection the other would not.
+    """
+    return land_exports(connection, catalog, schema, bucket, (Export(table, prefix),))[table.name]
+
+
+def plan_landings(
+    catalog: str, schema: str, bucket: str, exports: Sequence[Export]
+) -> tuple[LandingPlan, ...]:
+    """Build every statement up front, so a bad path fails before anything is executed.
+
+    The prefixes and identifiers come from Airflow Variables, so a malformed second prefix is a
+    configuration error rather than a bad night. Building both statements first means that error
+    stops the run before the first table's COPY INTO has committed any rows: otherwise every run
+    would land costs with no edges until an operator noticed and fixed the Variable, and the next
+    export window cannot heal a loader configuration error, only a missed file.
+    """
+    return tuple(
+        LandingPlan(
+            export.table,
+            path := export_prefix(bucket, export.prefix),
+            build_copy_sql(catalog, schema, path, export.table),
+        )
+        for export in exports
+    )
 
 
 def land_exports(
@@ -371,15 +394,24 @@ def land_exports(
 ) -> dict[str, int]:
     """Create every landing table, then land every prefix, in the given order.
 
-    Both tables are created before either is loaded: a `CREATE` that fails for the second table
-    should fail the run before any file is landed, rather than halfway through. The landings then
-    follow the sequence, so a failure leaves the earlier table's rows in place and the later table's
-    file for the next run to pick up. COPY INTO makes a retry of the whole run cheap: what already
-    landed is skipped.
+    Both statements are planned before either runs (see `plan_landings`), and both tables are created
+    before either file is read: a `CREATE` that fails for the second table should fail the run before
+    any file is landed, rather than halfway through. The landings then follow the sequence, so a
+    failure leaves the earlier table's rows in place and the later table's file for the next run to
+    pick up. COPY INTO makes a retry of the whole run cheap: what already landed is skipped.
     """
-    for export in exports:
-        ensure_landing_table(connection, catalog, schema, export.table)
-    return {
-        export.table.name: land_export(connection, catalog, schema, bucket, export.prefix, export.table)
-        for export in exports
-    }
+    plans = plan_landings(catalog, schema, bucket, exports)
+    for plan in plans:
+        ensure_landing_table(connection, catalog, schema, plan.table)
+    return {plan.table.name: _run_copy(connection, plan) for plan in plans}
+
+
+def _run_copy(connection, plan: LandingPlan) -> int:
+    with contextlib.closing(connection.cursor()) as cursor:
+        execute_with_retry(cursor, plan.sql)
+        rows = cursor.fetchall() or []
+        columns = [description[0] for description in (cursor.description or [])]
+
+    count = rows_inserted(rows, columns)
+    logger.info("delegate swarm: %d row(s) landed in %s from %s", count, plan.table.name, plan.path)
+    return count
