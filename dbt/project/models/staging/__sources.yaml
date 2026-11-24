@@ -1588,6 +1588,184 @@ sources:
             warn_after: { count: 1, period: day }
             error_after: { count: 3, period: day }
 
+  - name: lakeflow_source
+    schema: "{{ var('lakeflow_hubspot_schema', 'lakeflow_source_dev') }}"
+    description: >
+      Tables landed by Databricks Lakeflow Connect. Managed pipelines, not dbt,
+      and a full refresh of one clears it first. The schema is a var so
+      production can point at its own once slice D decides it; until then every
+      target reads the dev schema. No loaded_at_field or freshness, because
+      there is no loader timestamp column.
+
+      The activity tables carry no associations at all, and no ARRAY column of
+      any kind, so the person a call, meeting, task or note reached is not here.
+    tables:
+      - name: calls
+        description: >
+          HubSpot calls, current state. Call properties are flat columns named
+          by HubSpot's own internal property name, not Airbyte's
+          `properties_`-prefixed form. `hs_call_callee_object_id` is populated
+          for a few percent of rows only, so it is not a substitute for the
+          association the feed omits.
+        columns:
+          - name: hs_call_body
+            config:
+              meta:
+                sensitive: confidential
+          - name: hs_body_preview
+            config:
+              meta:
+                sensitive: confidential
+          - name: hs_body_preview_html
+            config:
+              meta:
+                sensitive: confidential
+          - name: hs_call_summary
+            config:
+              meta:
+                sensitive: confidential
+          - name: hs_call_to_number
+            config:
+              meta:
+                sensitive: identifier
+          - name: hs_call_from_number
+            config:
+              meta:
+                sensitive: identifier
+          - name: hs_call_recording_url
+            config:
+              meta:
+                sensitive: confidential
+          - name: hs_call_video_recording_url
+            config:
+              meta:
+                sensitive: confidential
+      - name: emails
+        description: >
+          HubSpot email engagements, current state. `hs_email_direction`
+          carries EMAIL, INCOMING_EMAIL and FORWARDED_EMAIL, the same
+          engagement_type labels the frozen feed uses, so the model reads
+          direction off that column rather than inferring it from the table.
+          `hs_email_associated_contact_id` reaches a contact for nearly every
+          row but is a single id, so it cannot stand in for a multi-contact
+          association.
+        columns:
+          - name: hs_email_text
+            config:
+              meta:
+                sensitive: confidential
+          - name: hs_email_html
+            config:
+              meta:
+                sensitive: confidential
+          - name: hs_body_preview
+            config:
+              meta:
+                sensitive: confidential
+          - name: hs_body_preview_html
+            config:
+              meta:
+                sensitive: confidential
+          - name: hs_email_from_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: hs_email_to_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: hs_email_cc_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: hs_email_bcc_email
+            config:
+              meta:
+                sensitive: identifier
+      - name: meetings
+        description: >
+          HubSpot meetings, current state. No contact id: only attendee and
+          organizer email addresses, and deriving ids from those would be a
+          join on a person's own address rather than an association.
+        columns:
+          - name: hs_meeting_body
+            config:
+              meta:
+                sensitive: confidential
+          - name: hs_internal_meeting_notes
+            config:
+              meta:
+                sensitive: confidential
+          - name: hs_body_preview
+            config:
+              meta:
+                sensitive: confidential
+          - name: hs_body_preview_html
+            config:
+              meta:
+                sensitive: confidential
+          - name: hs_meeting_recording_url
+            config:
+              meta:
+                sensitive: confidential
+          - name: hs_all_attendee_emails
+            config:
+              meta:
+                sensitive: identifier
+          - name: hs_organizer_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: hs_guest_emails
+            config:
+              meta:
+                sensitive: identifier
+      - name: notes
+        description: >
+          HubSpot notes, current state. No contact column at all, not even a
+          sparse one, so the note's person is only ever known from the frozen
+          feed.
+        columns:
+          - name: hs_note_body
+            config:
+              meta:
+                sensitive: confidential
+          - name: hs_body_preview
+            config:
+              meta:
+                sensitive: confidential
+          - name: hs_body_preview_html
+            config:
+              meta:
+                sensitive: confidential
+      - name: tasks
+        description: >
+          HubSpot tasks, current state. Carries materially fewer rows than the
+          frozen feed, concentrated in open tasks older than the current year,
+          and `hs_task_assigned_contacts` is empty on every row, so this table
+          is not yet a substitute for the frozen task stream.
+        columns:
+          - name: hs_task_body
+            config:
+              meta:
+                sensitive: confidential
+          - name: hs_task_subject
+            config:
+              meta:
+                sensitive: confidential
+          - name: hs_body_preview
+            config:
+              meta:
+                sensitive: confidential
+          - name: hs_body_preview_html
+            config:
+              meta:
+                sensitive: confidential
+          - name: hs_task_contact_phone
+            config:
+              meta:
+                sensitive: identifier
+
   - name: model_predictions
     schema: model_predictions
     description: Raw data loaded from model predictions
