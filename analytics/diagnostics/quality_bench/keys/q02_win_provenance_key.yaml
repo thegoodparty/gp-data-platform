@@ -47,7 +47,7 @@ as_of: "2026-07-21"
 # calendar-day variant passes.
 #
 # Repro context: numerator from goodparty_data_catalog.dbt.
-# stg_airbyte_source__amplitude_api_events (numeric-user_id hygiene filter;
+# stg_amplitude_ingestion__events (numeric-user_id hygiene filter;
 # 26 excluded pledge rows all had NULL user_id — zero users dropped),
 # MAX(event_time) = 2026-07-21 19:54 UTC at pin; all 14d windows closed
 # 2026-07-14 (no censoring). Clock alignment between product-DB

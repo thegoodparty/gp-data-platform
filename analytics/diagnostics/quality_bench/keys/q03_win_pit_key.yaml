@@ -59,7 +59,7 @@ mandatory_sources:
       non-demo), distinct users — not users_win_base's stored active flag and
       not un-anchored Amplitude user_ids.
   - id: raw_event_stream
-    pattern: "(stg_amplitude_ingestion__events|stg_airbyte_source__amplitude_api_events)"
+    pattern: "stg_amplitude_ingestion__events"
     description: The metric must be recomputed from the raw event stream — the
       stored is_active_candidate_30d flag is dead (reads FALSE for all users).
   - id: dashboard_union

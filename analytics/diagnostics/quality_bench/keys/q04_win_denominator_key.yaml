@@ -99,7 +99,7 @@ mandatory_sources:
       (latest-version, non-demo), not users_win_base registration or Amplitude
       registration events.
   - id: raw_event_stream
-    pattern: "(stg_amplitude_ingestion__events|stg_airbyte_source__amplitude_api_events)"
+    pattern: "stg_amplitude_ingestion__events"
     description: Milestones must be recomputed from the raw stream — the
       stored onboarding flags are new-flow-blind.
   - id: activation_source
