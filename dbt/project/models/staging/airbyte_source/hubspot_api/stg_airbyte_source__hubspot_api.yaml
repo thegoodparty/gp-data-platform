@@ -1652,9 +1652,7 @@ models:
         data_tests:
           - not_null
           - unique
-      # Same classification as the contacts staging model's email, and as
-      # int__hubspot_owners_history it reads: an owner email is a colleague's
-      # work address, so personnel data.
+      # Same classification as the contacts staging model, which this projects.
       - name: email
         databricks_tags:
           sensitive: identifier

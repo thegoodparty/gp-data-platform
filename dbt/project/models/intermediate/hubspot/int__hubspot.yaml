@@ -414,9 +414,8 @@ models:
         data_tests:
           - not_null
           - unique
-      # Top-level column key: under config: the tag drops silently. An owner
-      # email is a colleague's work address, so it is personnel data and carries
-      # the same classification the contacts history gives a contact's email.
+      # Top-level column key, because under config: the tag drops silently. An
+      # owner email is a colleague's work address, so personnel data.
       - name: email
         databricks_tags:
           sensitive: identifier
