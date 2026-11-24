@@ -36,6 +36,12 @@ Deploys paused, and **carries no schedule yet**: how often the companion re-read
 activity tables is the owner's cadence call, and it interacts with the dbt build cadence
 rather than standing alone. Set `SCHEDULE` here when that call is made; unpausing is the
 enable step.
+
+**Whichever cadence is chosen must include a periodic `full_sweep=True` run.** The
+incremental cursor moves on an activity's own `hs_lastmodifieddate`, which does not change
+when only an association is added or removed, so an incremental run alone would keep a
+removed link forever. A weekly full sweep is the smallest setting that bounds that staleness
+and costs one pass over the worklist.
 """
 
 from __future__ import annotations
@@ -50,6 +56,7 @@ from include.custom_functions.hubspot_api import (
     ACTIVITY_OBJECTS,
     AssociationExtractionConfig,
     extract_activity_associations,
+    split_qualified_name,
 )
 from pendulum import datetime, duration
 
@@ -76,14 +83,6 @@ def should_extract(activity_object: str, requested: list[str]) -> bool:
     if unknown:
         raise ValueError(f"Unknown activities in the `activities` param: {sorted(unknown)}")
     return not requested_set or activity_object in requested_set
-
-
-def _split_schema(value: str, variable_name: str) -> tuple[str, str]:
-    """Split a `catalog.schema` Variable into its parts, naming it on a malformed value."""
-    parts = (value or "").strip().split(".")
-    if len(parts) != 2 or not all(parts):
-        raise ValueError(f"{variable_name} must be `catalog.schema`, got {value!r}")
-    return parts[0], parts[1]
 
 
 @dag(
@@ -138,7 +137,9 @@ def extract_hubspot_companion():
                 )
                 return {"activity_type": activity_type, "skipped": True}
 
-            catalog, schema = _split_schema(Variable.get(LANDING_SCHEMA_VARIABLE), LANDING_SCHEMA_VARIABLE)
+            catalog, schema = split_qualified_name(
+                Variable.get(LANDING_SCHEMA_VARIABLE), LANDING_SCHEMA_VARIABLE
+            )
             # .strip() on the token: a Variable pasted with a trailing newline is a
             # copy-paste error, not a value change.
             config = AssociationExtractionConfig(

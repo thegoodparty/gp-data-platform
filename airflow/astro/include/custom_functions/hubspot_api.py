@@ -16,6 +16,14 @@ Two properties of the landing grain are deliberate:
 - **Incremental on the activity's own `hs_lastmodifieddate`**, because a full sweep per
   run is not affordable (calls alone is roughly 700k rows).
 
+**The cursor does not see a pure association change.** Adding or removing a contact link
+does not move an activity's `hs_lastmodifieddate`, and the unseen branch only recovers ids
+with no landing row at all, so a link removed on an already-landed activity is invisible
+to an incremental run. The cadence therefore has to include a periodic `full_sweep=True`
+run, which is the only thing that captures a removal. That is not a simplification to
+tidy away later: the cost is one full pass (under a thousand API calls for every type),
+and the alternative is that a stale link survives forever as the latest snapshot.
+
 Only **contact** associations are read. Nothing reads a company or deal association on an
 activity, so landing them would be rows nothing consumes; the same endpoint extends to
 both (`/crm/v4/associations/<activity>/companies/batch/read` and `.../deals/batch/read`)
@@ -140,17 +148,28 @@ def validate_identifier(name: str, value: str) -> str:
     return value
 
 
-def validate_source_prefix(prefix: str) -> tuple[str, str]:
-    """Split a `catalog.schema` worklist prefix into its two validated parts.
+def split_qualified_name(value: str, variable_name: str) -> tuple[str, str]:
+    """Split a `catalog.schema` Airflow Variable into its two validated parts.
 
-    The prefix is an Airflow Variable rather than a constant so the D3 cutover, which
-    moves the activity tables into `raw.hubspot` where the loader's principal has no
-    SELECT, is a configuration change instead of a code change.
+    Both the worklist's source relation and the landing schema are Variables, so the D3
+    cutover, which moves the activity tables into `raw.hubspot` where the loader's principal
+    has no SELECT, is a configuration change rather than a code change.
+
+    `variable_name` is in the error because a malformed Variable is fixed in the Airflow UI,
+    and the message has to name which one.
     """
-    parts = (prefix or "").split(".")
-    if len(parts) != 2:
-        raise ValueError(f"the activity worklist prefix must be `catalog.schema`, got {prefix!r}")
-    return validate_identifier("worklist catalog", parts[0]), validate_identifier("worklist schema", parts[1])
+    parts = (value or "").strip().split(".")
+    if len(parts) != 2 or not all(parts):
+        raise ValueError(f"{variable_name} must be `catalog.schema`, got {value!r}")
+    return (
+        validate_identifier(f"{variable_name} catalog", parts[0]),
+        validate_identifier(f"{variable_name} schema", parts[1]),
+    )
+
+
+def validate_source_prefix(prefix: str) -> tuple[str, str]:
+    """The worklist's `catalog.schema`, validated."""
+    return split_qualified_name(prefix, "hubspot_companion_activity_source")
 
 
 def format_cursor_ts(value: datetime | str) -> str:
@@ -273,6 +292,28 @@ def _post(
     raise RuntimeError("Unreachable: _post exhausted retries without returning")
 
 
+# Errors that mean "this object has no such associations" rather than "the request
+# failed". They are landed as an explicit empty array, which is the whole point of the
+# snapshot grain: a 207 carrying one of these for an unlinked activity is success.
+NO_ASSOCIATIONS_SUBCATEGORIES = frozenset(
+    {
+        "crm.associations.NO_ASSOCIATIONS_FOUND",
+        "crm.associations.ASSOCIATION_NOT_FOUND",
+    }
+)
+
+
+def _is_no_associations_error(error: Mapping[str, Any]) -> bool:
+    """Whether a batch error is HubSpot saying the object has no links.
+
+    The subCategory can sit on the entry or on any of its nested `errors`, so both are
+    read. Anything else is a real failure and must not land as an empty snapshot.
+    """
+    candidates = [error.get("subCategory")]
+    candidates += [inner.get("subCategory") for inner in error.get("errors") or []]
+    return any(isinstance(value, str) and value in NO_ASSOCIATIONS_SUBCATEGORIES for value in candidates)
+
+
 def parse_association_batch(body: Mapping[str, Any], requested_ids: Sequence[str]) -> dict[str, list[str]]:
     """Map every requested activity id to its distinct contact ids, `[]` when it has none.
 
@@ -281,12 +322,15 @@ def parse_association_batch(body: Mapping[str, Any], requested_ids: Sequence[str
     explicit empty array rather than no row. `results` is keyed by `from.id` rather than by
     position, because the v4 batch endpoint does not promise to answer in request order.
 
-    A batch that reports errors raises instead of landing: an errored id would otherwise
-    land as "no links", which is indistinguishable downstream from a real removal.
+    A `207` carries `results` and `errors[]` together, and an activity with no links can
+    appear in either. So a no-associations error is tolerated (its id keeps the empty array
+    the map already holds) and any other error raises: an errored id landed as "no links"
+    would be indistinguishable downstream from a real removal.
     """
-    errors = body.get("errors") or []
-    if errors:
-        raise RuntimeError(f"HubSpot association batch reported errors: {errors}")
+    for error in body.get("errors") or []:
+        if _is_no_associations_error(error):
+            continue
+        raise RuntimeError(f"HubSpot association batch reported errors: {error}"[:500])
 
     by_id: dict[str, set[str]] = {activity_id: set() for activity_id in requested_ids}
     for result in body.get("results") or []:
@@ -308,17 +352,40 @@ def parse_association_batch(body: Mapping[str, Any], requested_ids: Sequence[str
     return {activity_id: sorted(contact_ids) for activity_id, contact_ids in by_id.items()}
 
 
+def _paged_ids(body: Mapping[str, Any]) -> dict[str, str]:
+    """Activity ids whose association list is truncated, mapped to their continuation token.
+
+    A result carries `paging.next.after` when it has more links than one response holds,
+    and the docs say that token is fed back alongside the same id. Ignoring it would land a
+    partial snapshot for a heavily linked activity and look like a real shortfall in the
+    pairs check.
+    """
+    more: dict[str, str] = {}
+    for result in body.get("results") or []:
+        after = ((result.get("paging") or {}).get("next") or {}).get("after")
+        from_id = str((result.get("from") or {}).get("id") or "").strip()
+        if after and from_id:
+            more[from_id] = str(after)
+    return more
+
+
 def fetch_contact_associations(
     session: requests.Session,
     activity_object: str,
     activity_ids: Sequence[str],
     api_token: str,
     batch_size: int = ASSOCIATION_BATCH_SIZE,
+    max_pages: int = 20,
 ) -> dict[str, list[str]]:
     """Read activity-to-contact links for `activity_ids`, one v4 batch call per 1,000 ids.
 
     Returns one entry per requested id, in every case, so the caller can land a complete
-    snapshot without consulting the response again.
+    snapshot without consulting the response again. An id whose links do not fit one
+    response is re-requested with its continuation token until it stops paging, so the
+    snapshot really is the complete set.
+
+    `max_pages` bounds that loop. A server that kept returning a continuation token would
+    otherwise loop forever, and the failure it should produce is a loud one.
     """
     validate_identifier("activity object", activity_object)
     if not activity_ids:
@@ -326,17 +393,42 @@ def fetch_contact_associations(
     if batch_size < 1 or batch_size > ASSOCIATION_BATCH_SIZE:
         raise ValueError(f"batch_size must be between 1 and {ASSOCIATION_BATCH_SIZE}")
 
-    associations: dict[str, list[str]] = {}
-    # strict=False: the final batch is expected to be short.
-    for batch in batched(activity_ids, batch_size, strict=False):
+    def read(batch: Sequence[str], after_by_id: Mapping[str, str]) -> dict[str, list[str]]:
+        inputs = []
+        for activity_id in batch:
+            entry: dict[str, Any] = {"id": activity_id}
+            if activity_id in after_by_id:
+                entry["after"] = after_by_id[activity_id]
+            inputs.append(entry)
         body = _post(
             session,
             f"/crm/v4/associations/{activity_object}/contacts/batch/read",
-            {"inputs": [{"id": activity_id} for activity_id in batch]},
+            {"inputs": inputs},
             api_token,
             f"{len(batch)} {activity_object} association ids",
         )
-        associations.update(parse_association_batch(body, batch))
+        return body
+
+    associations: dict[str, list[str]] = {}
+    # strict=False: the final batch is expected to be short.
+    for batch in batched(activity_ids, batch_size, strict=False):
+        merged: dict[str, set[str]] = {}
+        pending: dict[str, str] = {}
+        for _ in range(max_pages):
+            body = read(batch, pending)
+            page_links = parse_association_batch(body, batch)
+            for activity_id, contact_ids in page_links.items():
+                merged.setdefault(activity_id, set()).update(contact_ids)
+            pending = _paged_ids(body)
+            if not pending:
+                break
+        else:
+            raise RuntimeError(
+                f"HubSpot kept returning a continuation token for {len(pending)} "
+                f"{activity_object} ids after {max_pages} pages"
+            )
+        for activity_id in batch:
+            associations[activity_id] = sorted(merged.get(activity_id, set()))
     return associations
 
 
@@ -672,6 +764,10 @@ def extract_activity_associations(
         # takes, so both halves are in the summary rather than only the total.
         "activities_with_links": with_links,
         "activities_without_links": len(activity_ids) - with_links,
+        # Both halves or neither: a cursor is only usable as a pair, so reporting one half
+        # from this run and the other from the prior one would describe a cursor that
+        # cannot be resumed from.
         "cursor_source_changed_at": format_cursor_ts(changed_at[-1]) if changed_at else None,
-        "cursor_activity_id": activity_ids[-1] if activity_ids else after[1],
+        "cursor_activity_id": activity_ids[-1] if activity_ids else None,
+        "prior_cursor_activity_id": after[1],
     }

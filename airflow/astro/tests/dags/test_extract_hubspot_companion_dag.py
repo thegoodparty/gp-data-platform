@@ -82,8 +82,9 @@ def test_the_defaults_point_at_the_dev_landing_and_the_lakeflow_source():
     assert globals_["SCHEDULE"] is None
 
 
-def test_the_activity_names_are_the_four_types_with_an_association_endpoint():
-    assert _globals()["_ACTIVITY_NAMES"] == ("calls", "meetings", "notes", "tasks")
+def test_the_task_names_derive_from_the_library_registry():
+    """One list of activity types, so a fifth cannot be added to only one side."""
+    assert _globals()["_ACTIVITY_NAMES"] == tuple(name for name, _ in _globals()["ACTIVITY_OBJECTS"])
 
 
 @pytest.mark.parametrize(
@@ -107,13 +108,13 @@ def test_an_unknown_activity_name_raises_rather_than_reading_nothing():
 
 
 def test_a_landing_schema_variable_splits_into_catalog_and_schema():
-    assert _globals()["_split_schema"]("dev.hubspot", "x") == ("dev", "hubspot")
+    assert _globals()["split_qualified_name"]("dev.hubspot", "x") == ("dev", "hubspot")
 
 
 @pytest.mark.parametrize("value", ["", "hubspot", "a.b.c", "a."])
 def test_a_malformed_landing_schema_variable_names_itself(value):
     with pytest.raises(ValueError, match="x must be"):
-        _globals()["_split_schema"](value, "x")
+        _globals()["split_qualified_name"](value, "x")
 
 
 class FakeConnection:

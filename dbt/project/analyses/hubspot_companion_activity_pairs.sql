@@ -58,7 +58,7 @@ with
         qualify
             row_number() over (
                 partition by activity_type, activity_id
-                order by loaded_at desc, source_changed_at desc
+                order by loaded_at desc, extracted_at desc, source_changed_at desc
             )
             = 1
     ),

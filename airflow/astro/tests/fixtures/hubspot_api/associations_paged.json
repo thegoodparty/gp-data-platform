@@ -1,0 +1,29 @@
+{
+  "_comment": "Recorded fixture for a paged result: activity 301 has more contact links than one response returns, so its result carries paging.next.after and must be re-requested with that token alongside the same id. Landing only the first page would truncate the snapshot and read as a shortfall in the pairs check.",
+  "results": [
+    {
+      "from": {
+        "id": "301"
+      },
+      "to": [
+        {
+          "toObjectId": 9001,
+          "associationTypes": [
+            {
+              "category": "HUBSPOT_DEFINED",
+              "typeId": 194,
+              "label": null
+            }
+          ]
+        }
+      ],
+      "paging": {
+        "next": {
+          "after": "302-cursor",
+          "link": "https://api.hubapi.com/crm/v4/associations/calls/contacts/batch/read?after=302-cursor"
+        }
+      }
+    }
+  ],
+  "status": "COMPLETE"
+}

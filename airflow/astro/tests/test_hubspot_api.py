@@ -24,6 +24,7 @@ from include.custom_functions.hubspot_api import (
     INSERT_BATCH_SIZE,
     INSERT_COLUMNS,
     LANDING_COLUMNS,
+    NO_ASSOCIATIONS_SUBCATEGORIES,
     AssociationExtractionConfig,
     LandedAssociation,
     _post,
@@ -208,6 +209,77 @@ def test_a_batch_that_reports_errors_raises_rather_than_landing_no_links():
 
     with pytest.raises(RuntimeError, match="reported errors"):
         parse_association_batch(body, ["101"])
+
+
+def test_a_207_no_associations_error_lands_an_explicit_empty_array():
+    """HubSpot answers 207 with results and errors together when some inputs have no links.
+
+    A quarter or more of tasks have none, so raising on this shape would fail every run and
+    the empty-array path this loader exists for would never execute.
+    """
+    body = _fixture("associations_partial_207.json")
+
+    parsed = parse_association_batch(body, ["201", "202"])
+
+    assert parsed["201"] == ["9001"]
+    assert parsed["202"] == []
+
+
+def test_a_real_error_beside_a_no_associations_error_still_raises():
+    body = _fixture("associations_partial_207.json")
+    body["errors"].append(
+        {"id": "203", "subCategory": "crm.associations.INVALID_OBJECT_TYPE", "message": "boom"}
+    )
+
+    with pytest.raises(RuntimeError, match="reported errors"):
+        parse_association_batch(body, ["201", "202", "203"])
+
+
+def test_a_no_associations_error_nested_on_the_entry_is_tolerated():
+    """The subCategory can sit on a nested error rather than the outer entry."""
+    body = {
+        "results": [{"from": {"id": "101"}, "to": []}],
+        "errors": [
+            {
+                "id": "101",
+                "errors": [{"subCategory": "crm.associations.NO_ASSOCIATIONS_FOUND"}],
+            }
+        ],
+    }
+
+    assert parse_association_batch(body, ["101"]) == {"101": []}
+
+
+def test_the_tolerated_subcategories_do_not_include_a_generic_validation_error():
+    """Only 'there are none' is tolerated: a generic VALIDATION_ERROR is a real failure."""
+    assert "VALIDATION_ERROR" not in NO_ASSOCIATIONS_SUBCATEGORIES
+    assert all(value.startswith("crm.associations.") for value in NO_ASSOCIATIONS_SUBCATEGORIES)
+
+
+def test_a_paged_result_is_re_requested_until_it_stops_paging():
+    """A truncated association list would land as a partial snapshot, not as an error."""
+    first = _fixture("associations_paged.json")
+    second = {
+        "results": [
+            {"from": {"id": "301"}, "to": [{"toObjectId": 9002}]},
+        ]
+    }
+    session = FakeSession([FakeResponse(body=first), FakeResponse(body=second)])
+
+    associations = fetch_contact_associations(session, "calls", ["301"], "tok")
+
+    assert associations == {"301": ["9001", "9002"]}
+    assert len(session.requests) == 2
+    # The continuation token travels with the same id, as the docs specify.
+    assert session.requests[1] == {"inputs": [{"id": "301", "after": "302-cursor"}]}
+
+
+def test_a_continuation_token_that_never_stops_raises_rather_than_looping():
+    endless = _fixture("associations_paged.json")
+    session = FakeSession([FakeResponse(body=endless) for _ in range(3)])
+
+    with pytest.raises(RuntimeError, match="continuation token"):
+        fetch_contact_associations(session, "calls", ["301"], "tok", max_pages=3)
 
 
 # --- batching at the 1,000 boundary ----------------------------------------
@@ -559,8 +631,10 @@ def test_a_full_sweep_collapses_to_one_row_per_activity_and_omits_the_unseen_bra
 
     assert "GROUP BY activity_id" in sql
     assert "NOT EXISTS" not in sql
-    assert "rows (activity_id, source_changed_at) AS (" not in sql
-    assert sql.count("SELECT") >= 1
+    assert "UNION ALL" not in sql
+    # No cursor, so nothing is floored and nothing needs the keyset pair.
+    assert "hs_lastmodifieddate >= TIMESTAMP" not in sql
+    assert "activity_id > '" not in sql
 
 
 def test_the_worklist_is_ordered_by_the_cursor_pair():
@@ -694,7 +768,9 @@ def test_extract_of_an_empty_worklist_writes_nothing_and_keeps_the_cursor():
 
     assert summary["activities_read"] == 0
     assert summary["batches"] == 0
+    # Neither half of the cursor is reported from a run that read nothing.
     assert summary["cursor_activity_id"] is None
+    assert summary["cursor_source_changed_at"] is None
     # Nothing was read, so nothing is written: an empty INSERT would still commit a table.
     insert.assert_not_called()
 
