@@ -9,8 +9,10 @@ models:
       1. **This is not invoiced cost.** It is the gateway's own computed number from its pricing
       catalog, which is what the gateway shows its own operators, not what a provider bills.
 
-      2. **It overlaps `anthropic_analytics_*`.** Claude traffic reaches both, so summing this
-      with those reports double counts it. Read one or the other, not both.
+      2. **It does not overlap the Anthropic org reports.** The gateway routes only to Bedrock
+      and Fireworks, and the `anthropic_analytics_*` reports cover the Anthropic org directly, so
+      the two never bill the same traffic. They are different billers, and `ai_usage_daily` sums
+      both arms without de-duplicating anything.
 
       3. **The newest `usage_date` is partial.** A request is re-exported for a week, so a day's
       newest export moves past that day only once an export after its midnight has covered it.
@@ -57,9 +59,18 @@ models:
         data_tests:
           - not_null
       - name: provider
-        description: The provider the gateway routed the requests to.
+        description: >
+          The provider the gateway routed the requests to. Pinned to these two because the whole
+          no-de-duplication rule in `ai_usage_daily` rests on it: the gateway routes only to
+          Bedrock and Fireworks, so its traffic never reaches the Anthropic org that the other arm
+          bills. A new gateway provider, Anthropic direct say, would break that premise and has to
+          force a de-duplication decision before the page counts the same spend twice. Failing here
+          skips `ai_usage_daily`, so the page goes stale rather than wrong.
         data_tests:
           - not_null
+          - accepted_values:
+              arguments:
+                values: [bedrock, fireworks]
       - name: model
         description: The model the requests named. Never blank here.
         data_tests:
@@ -97,9 +108,8 @@ models:
         description: Input tokens served from a provider-side prompt cache.
       - name: cost_usd
         description: >
-          The gateway's own computed cost across the group. Not invoiced cost, and it overlaps
-          `anthropic_analytics_*`. Zero, not null, for a group of requests that were never
-          priced.
+          The gateway's own computed cost across the group. Not invoiced cost. Zero, not null,
+          for a group of requests that were never priced.
         data_tests:
           - not_null
           - dbt_utils.accepted_range:
@@ -117,6 +127,187 @@ models:
         description: >
           The newest export that observed any request in the group. Compare a day against it to
           tell a complete day from a partial one.
+
+  - name: anthropic_daily_usage
+    description: >
+      Anthropic spend, one row per UTC day and person, plus one `unattributed` row per day.
+      Named after the biller rather than the vendor's API, because the other source on the AI
+      spend dashboard is named for where its money is billed.
+
+      1. **`unattributed` is a bucket, not a person.** Its cost is the org-wide total for the day
+      minus the seats that carry an email. Two things land there: spend that belongs to no seat
+      at all, which is the bulk of it, and seat rows whose email is null, which is what the
+      vendor leaves behind once it deletes an account. The residual is computed from the emails
+      rather than from seat rows so that both fold into one bucket.
+
+      2. **The daily total equals the org cost report's.** That follows from the residual, and it
+      is the point: it means nothing is dropped. Do not read this beside
+      `anthropic_analytics_org_cost_report`, which would count the residual a second time. That
+      report keeps two jobs only, the reconciliation test and the residual arithmetic here.
+
+      3. **The residual is computed at cent precision.** Both sides are rounded to cents before
+      the subtraction, and a day whose difference is exactly zero gets no residual row. Over the
+      full history the raw difference lands a few millionths of a dollar on the wrong side of
+      zero on days that are otherwise equal.
+
+      4. **`request_count` is null on the `unattributed` row.** The org report leaves `requests`
+      null on every row, because the vendor does not attribute requests when it groups by cost
+      type. The residual's count is therefore not computable, and a zero would be a claim a sum
+      would hide.
+
+      5. **There is no model column.** The vendor does not split its cost by model at the grain
+      we ingest, so a per-model Claude figure would be invented. `ai_usage_daily` labels these
+      rows `claude_all_models` for that reason.
+
+      6. **`source_complete_through` needs both reports read after the day closed**, so it takes
+      the earlier of the two read times. A day where only the org report has been re-read is a
+      day whose residual sits against a stale seat half. Complete is not final: the vendor can
+      revise amounts for up to 30 days without the day becoming incomplete again.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [usage_date, person_email]
+    columns:
+      - name: usage_date
+        description: UTC day the spend falls in, from the report's bucket start.
+        data_tests:
+          - not_null
+      - name: person_email
+        description: >
+          The seat user's address, lower-cased, or `unattributed` on the residual row. Lower-cased
+          because the dashboard's person filter compares these strings across sources.
+        databricks_tags:
+          sensitive: identifier
+        data_tests:
+          - not_null
+      - name: is_unattributed
+        description: True on the residual row, so a reader can separate it from a person.
+      - name: cost_usd
+        description: >
+          Spend in USD, post-discount and pre-credit. On the residual row, the org total minus
+          the email-attributable seats, both at cents.
+        data_tests:
+          - not_null
+      - name: request_count
+        description: >
+          Requests across the group. Null on the residual row, where the source reports none.
+      - name: source_loaded_at
+        description: >
+          The earlier of the org report's and the seat report's newest read. Constant across the
+          model, because it describes the feed rather than the day.
+      - name: source_complete_through
+        description: >
+          The last UTC day both reports were read after it closed. Constant across the model.
+
+  - name: ai_usage_daily
+    description: >
+      GoodParty's AI spend in one table, one row per UTC day, source, provider, model, attribution
+      kind and attribution. It unions the source marts rather than joining them, so a source that
+      cannot reconcile one day does not remove another source's rows.
+
+      1. **`cost_basis` says who measured the number.** `gateway_computed` is the Bifrost
+      gateway's own pricing catalog, `vendor_reported` is Anthropic's own report. They are not
+      the same kind of number: one is a calculation, the other a bill.
+
+      2. **The sources do not overlap.** Bifrost routes only to Bedrock and Fireworks, and the
+      Anthropic arm is the Anthropic org directly, so nothing is counted twice and nothing needs
+      de-duplicating. That is why summing across `source` is safe, and why a new Bifrost provider
+      fails a test on `bifrost_daily_usage` rather than here.
+
+      3. **`claude_all_models` is a label, not a model id.** The vendor does not split Claude cost
+      by model at the grain we ingest, so the Anthropic arm carries one fixed label. Never add it
+      to a per-model figure for a real model of that name.
+
+      4. **Nulls mean the source has no such measure, not zero.** `session_count` and
+      `total_tokens` are null on the Anthropic arm, and `request_count` is null on an Anthropic
+      residual row.
+
+      5. **`source_loaded_at` and `source_complete_through` are per source, not per row.** Both
+      describe a feed, so a reader can tell a stalled feed from a quiet week, which the
+      completeness date alone cannot.
+
+      6. **The completeness rules differ by source.** Bifrost is complete when
+      `usage_date < to_date(source_exported_at)`, since that is when an export has passed the
+      day's midnight. Anthropic needs both of its reports read after the day closed. Neither is
+      ever compared against `current_date()`.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - usage_date
+              - source
+              - provider
+              - model
+              - attribution_kind
+              - attribution
+    columns:
+      - name: usage_date
+        description: UTC day of the spend.
+        data_tests:
+          - not_null
+      - name: source
+        description: >
+          Where the money is billed. `bifrost` is the gateway, `anthropic` the Anthropic org.
+        data_tests:
+          - not_null
+      - name: provider
+        description: >
+          The provider behind that source. `bedrock` and `fireworks` under Bifrost, `anthropic`
+          on the Anthropic arm.
+        data_tests:
+          - not_null
+      - name: model
+        description: >
+          The model the spend names, or `claude_all_models` on the Anthropic arm, which cannot
+          split its cost by model. Never null.
+        data_tests:
+          - not_null
+      - name: attribution_kind
+        description: >
+          `person` when the spend belongs to a person, `agent` for a non-human actor, and
+          `unattributed` for spend that belongs to nobody. Present so that an unattributed bucket
+          is never mistaken for a person in a list. `agent` arrives with the delegate swarm arm;
+          no Phase 1 source produces it.
+        data_tests:
+          - not_null
+      - name: attribution
+        description: >
+          A lower-case email, an agent name, or the literal `unattributed`. Never null: spend with
+          no bucket at all would vanish from the total silently.
+        databricks_tags:
+          sensitive: identifier
+        data_tests:
+          - not_null
+      - name: cost_usd
+        description: Spend in USD, in the source's own basis. See `cost_basis`.
+        data_tests:
+          - not_null
+      - name: request_count
+        description: >
+          Requests in the group. Null where the source does not report them, including an
+          Anthropic residual row.
+      - name: session_count
+        description: >
+          Sessions in the group. Null on both current sources; a future source reports it.
+      - name: total_tokens
+        description: >
+          Input plus output tokens. Null on the Anthropic arm, which reports cost rather than
+          tokens at this grain.
+      - name: cost_basis
+        description: >
+          Who measured `cost_usd`. `gateway_computed` is the gateway's pricing catalog,
+          `vendor_reported` the vendor's own report, `self_reported` a system pricing its own
+          usage.
+        data_tests:
+          - not_null
+      - name: source_loaded_at
+        description: >
+          When the source's feed last loaded. Constant per source, so read beside
+          `source_complete_through`: the pair is what shows a stalled feed.
+      - name: source_complete_through
+        description: >
+          The last UTC day the source is complete through. Constant per source. Complete is not
+          final, since a vendor can still revise a complete day.
 
   - name: quickbooks_accounts
     description: >
@@ -637,3 +828,161 @@ unit_tests:
         - {usage_date: "2026-11-17", model: model-b, person_email: "test.user@goodparty.org", request_count: 2, error_count: 2, unpriced_request_count: 0, total_tokens: 0, cost_usd: 0}
         # A request with no identity at all lands here instead of being dropped.
         - {usage_date: "2026-11-17", model: model-c, person_email: unattributed, request_count: 1, error_count: 0, unpriced_request_count: 0, total_tokens: 10, cost_usd: 0.5}
+
+  # The arm has no read time when a report has never loaded. least() skips a null
+  # argument, so a bare least() would hand an empty seat report the org report's
+  # stamp and publish a completeness date the arm has not earned. Both freshness
+  # columns must be null here.
+  - name: anthropic_daily_usage_has_no_anchor_when_the_seat_report_is_empty
+    model: anthropic_daily_usage
+    given:
+      - input: ref('stg_airbyte_source__anthropic_api_cost_report')
+        format: sql
+        rows: |
+          select
+              timestamp '2026-11-15 00:00:00' as bucket_start,
+              timestamp '2026-11-16 00:00:00' as bucket_end,
+              cast(10.00 as decimal(20, 6)) as amount,
+              cast(null as bigint) as requests,
+              timestamp '2026-11-16 20:25:00' as _airbyte_extracted_at
+      - input: ref('stg_airbyte_source__anthropic_api_user_cost_report')
+        format: sql
+        rows: |
+          select
+              timestamp '2026-11-15 00:00:00' as bucket_start,
+              timestamp '2026-11-16 00:00:00' as bucket_end,
+              'u1' as user_id,
+              cast('test.user@goodparty.org' as string) as user_email,
+              cast(10.00 as decimal(20, 6)) as amount,
+              cast(null as bigint) as requests,
+              timestamp '2026-11-16 20:25:00' as _airbyte_extracted_at
+          where false
+    expect:
+      rows:
+        # The whole org total falls to unattributed, and neither freshness column
+        # is claimed.
+        - {usage_date: "2026-11-15", person_email: unattributed, is_unattributed: true, cost_usd: 10, request_count: null, source_loaded_at: null, source_complete_through: null}
+
+  # The residual arithmetic is the core of the model, and a daily-total comparison
+  # cannot see a wrong split between a person row and the residual. This pins the
+  # whole shape: two seat ids sharing one mixed-case email sum into one lower-cased
+  # row, a null-email seat folds into the residual instead of becoming a blank
+  # person, and a day whose difference rounds to exactly zero emits no residual
+  # row at all.
+  - name: anthropic_daily_usage_person_split_and_residual
+    model: anthropic_daily_usage
+    given:
+      - input: ref('stg_airbyte_source__anthropic_api_cost_report')
+        format: sql
+        rows: |
+          select
+              timestamp '2026-11-15 00:00:00' as bucket_start,
+              cast(10.000000 as decimal(20, 6)) as amount,
+              timestamp '2026-11-17 20:25:00' as _airbyte_extracted_at
+          union all
+          -- rounds to the same cent as the seat row below, so the day has no residual
+          select
+              timestamp '2026-11-16 00:00:00',
+              cast(1.004000 as decimal(20, 6)),
+              timestamp '2026-11-17 20:25:00'
+      - input: ref('stg_airbyte_source__anthropic_api_user_cost_report')
+        format: sql
+        rows: |
+          select
+              timestamp '2026-11-15 00:00:00' as bucket_start,
+              'u1' as user_id,
+              cast('Alice@GoodParty.org' as string) as user_email,
+              cast(2.500000 as decimal(20, 6)) as amount,
+              cast(10 as bigint) as requests,
+              timestamp '2026-11-17 20:25:00' as _airbyte_extracted_at
+          union all
+          -- same person under a second vendor id and different casing
+          select
+              timestamp '2026-11-15 00:00:00', 'u5', 'alice@goodparty.org',
+              cast(0.500000 as decimal(20, 6)), cast(5 as bigint),
+              timestamp '2026-11-17 20:25:00'
+          union all
+          select
+              timestamp '2026-11-15 00:00:00', 'u2', 'bob@goodparty.org',
+              cast(3.000000 as decimal(20, 6)), cast(20 as bigint),
+              timestamp '2026-11-17 20:25:00'
+          union all
+          -- a deleted seat: no email, so its cost belongs to nobody
+          select
+              timestamp '2026-11-15 00:00:00', 'u3', cast(null as string),
+              cast(1.000000 as decimal(20, 6)), cast(3 as bigint),
+              timestamp '2026-11-17 20:25:00'
+          union all
+          select
+              timestamp '2026-11-16 00:00:00', 'u4', 'carol@goodparty.org',
+              cast(1.001000 as decimal(20, 6)), cast(7 as bigint),
+              timestamp '2026-11-17 20:25:00'
+    expect:
+      rows:
+        # Two vendor ids, one email, summed and lower-cased.
+        - {usage_date: "2026-11-15", person_email: "alice@goodparty.org", is_unattributed: false, cost_usd: 3, request_count: 15, source_complete_through: "2026-11-16"}
+        - {usage_date: "2026-11-15", person_email: "bob@goodparty.org", is_unattributed: false, cost_usd: 3, request_count: 20, source_complete_through: "2026-11-16"}
+        # Org total less the email-attributable seats, so it carries the deleted
+        # seat's cost as well as the non-seat share.
+        - {usage_date: "2026-11-15", person_email: unattributed, is_unattributed: true, cost_usd: 4, request_count: null, source_complete_through: "2026-11-16"}
+        # No residual row for the day whose rounded difference is zero.
+        - {usage_date: "2026-11-16", person_email: "carol@goodparty.org", is_unattributed: false, cost_usd: 1.001, request_count: 7, source_complete_through: "2026-11-16"}
+
+  # The arm mapping and the Bifrost completeness rule, which nothing else reaches.
+  # The point of the data is the partial newest day: the last export ran on the
+  # 20th, so the 20th itself is not complete and only earlier days are. `<=` in
+  # place of `<` here would publish a partial day as complete.
+  - name: ai_usage_daily_arm_mapping_and_bifrost_completeness
+    model: ai_usage_daily
+    given:
+      - input: ref('bifrost_daily_usage')
+        format: sql
+        rows: |
+          select
+              to_date('2026-11-18') as usage_date,
+              'bedrock' as provider,
+              'model-a' as model,
+              'test.user@goodparty.org' as person_email,
+              cast(1.500000 as decimal(20, 6)) as cost_usd,
+              cast(4 as bigint) as request_count,
+              cast(100 as bigint) as total_tokens,
+              timestamp '2026-11-20 09:00:00' as source_exported_at
+          union all
+          select
+              to_date('2026-11-19'), 'bedrock', 'model-a', 'unattributed',
+              cast(0.500000 as decimal(20, 6)), cast(1 as bigint),
+              cast(10 as bigint), timestamp '2026-11-20 09:00:00'
+          union all
+          select
+              to_date('2026-11-20'), 'fireworks', 'model-b', 'unattributed',
+              cast(2.500000 as decimal(20, 6)), cast(6 as bigint),
+              cast(200 as bigint), timestamp '2026-11-20 09:00:00'
+      - input: ref('anthropic_daily_usage')
+        format: sql
+        rows: |
+          select
+              to_date('2026-11-01') as usage_date,
+              'someone@goodparty.org' as person_email,
+              false as is_unattributed,
+              cast(7.000000 as decimal(20, 6)) as cost_usd,
+              cast(11 as bigint) as request_count,
+              timestamp '2026-11-16 20:25:00' as source_loaded_at,
+              to_date('2026-11-15') as source_complete_through
+          union all
+          select
+              to_date('2026-11-01'), 'unattributed', true,
+              cast(3.000000 as decimal(20, 6)), cast(null as bigint),
+              timestamp '2026-11-16 20:25:00', to_date('2026-11-15')
+    expect:
+      rows:
+        # Bifrost: cost basis, populated tokens, null sessions, and a completeness
+        # date one day back because the 20th is still partial.
+        - {usage_date: "2026-11-18", source: bifrost, provider: bedrock, model: model-a, attribution_kind: person, attribution: "test.user@goodparty.org", cost_usd: 1.5, request_count: 4, session_count: null, total_tokens: 100, cost_basis: gateway_computed, source_loaded_at: "2026-11-20 09:00:00", source_complete_through: "2026-11-19"}
+        # The last complete day: the export ran on the 20th, so the 20th itself is
+        # not complete. `<=` in place of `<` would say 2026-11-20 here.
+        - {usage_date: "2026-11-19", source: bifrost, provider: bedrock, model: model-a, attribution_kind: unattributed, attribution: unattributed, cost_usd: 0.5, request_count: 1, session_count: null, total_tokens: 10, cost_basis: gateway_computed, source_loaded_at: "2026-11-20 09:00:00", source_complete_through: "2026-11-19"}
+        # An identity-less request is its own kind, not a person.
+        - {usage_date: "2026-11-20", source: bifrost, provider: fireworks, model: model-b, attribution_kind: unattributed, attribution: unattributed, cost_usd: 2.5, request_count: 6, session_count: null, total_tokens: 200, cost_basis: gateway_computed, source_loaded_at: "2026-11-20 09:00:00", source_complete_through: "2026-11-19"}
+        # Anthropic: the fixed model label, the vendor basis, and no tokens.
+        - {usage_date: "2026-11-01", source: anthropic, provider: anthropic, model: claude_all_models, attribution_kind: person, attribution: "someone@goodparty.org", cost_usd: 7, request_count: 11, session_count: null, total_tokens: null, cost_basis: vendor_reported, source_loaded_at: "2026-11-16 20:25:00", source_complete_through: "2026-11-15"}
+        - {usage_date: "2026-11-01", source: anthropic, provider: anthropic, model: claude_all_models, attribution_kind: unattributed, attribution: unattributed, cost_usd: 3, request_count: null, session_count: null, total_tokens: null, cost_basis: vendor_reported, source_loaded_at: "2026-11-16 20:25:00", source_complete_through: "2026-11-15"}
