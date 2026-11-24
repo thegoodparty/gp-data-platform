@@ -1,4 +1,6 @@
 -- depends_on: {{ ref("l2_manual_district_assignments") }}
+-- Needs a --full-refresh whenever a district type is added or renamed (as with
+-- MMA_Zone).
 {{
     config(
         materialized="incremental",

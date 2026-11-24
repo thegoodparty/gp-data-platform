@@ -2304,6 +2304,8 @@ models:
         description: '{{ doc("l2col_Local_Hospital_District") }}'
       - name: "Local_Park_District"
         description: '{{ doc("l2col_Local_Park_District") }}'
+      - name: "MMA_Zone"
+        description: '{{ doc("l2col_MMA_Zone") }}'
       - name: "Mailing_Addresses_AddressLine"
         description: '{{ doc("l2col_Mailing_Addresses_AddressLine") }}'
       - name: "Mailing_Addresses_ApartmentNum"
