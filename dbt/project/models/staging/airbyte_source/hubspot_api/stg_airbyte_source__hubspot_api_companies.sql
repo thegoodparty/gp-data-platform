@@ -8,10 +8,10 @@
 -- imports, and the import would error.
 --
 -- Lakeflow hands every company property over as text, so the numeric and boolean
--- columns are cast here, matching the registry's own patterns: the int_via_float
--- round-trip because a good number of seats_available and general_votes_received
--- values are float-formatted ("1.0", "498.0000000000") and a plain try_cast to int
--- returns NULL for those, silently.
+-- columns are cast here, matching the registry's own patterns: a double round-trip,
+-- because float is 32-bit here and rounds integers above about 16.7 million (a
+-- statewide vote total can exceed that), and because float-formatted values
+-- ("1.0", "498.0000000000") null out under a plain try_cast to int.
 with
     lakeflow_companies as (
         select
@@ -120,17 +120,20 @@ select
     {{ cast_to_boolean("uncontested", ["uncontested"], ["contested"]) }}
     as is_uncontested,
     number_of_opponents,
+    -- Double, not float: float is 32-bit here and rounds above about 16.7 million,
+    -- which statewide vote totals can exceed. No current value is affected; this
+    -- is preventive.
     try_cast(
-        try_cast(nullif(trim(seats_available), '') as float) as int
+        try_cast(nullif(trim(seats_available), '') as double) as int
     ) as seats_available,
 
     -- election results
     general_election_result,
     try_cast(
-        try_cast(nullif(trim(general_votes_received), '') as float) as int
+        try_cast(nullif(trim(general_votes_received), '') as double) as int
     ) as general_votes_received,
     try_cast(
-        try_cast(nullif(trim(total_general_votes_cast), '') as float) as int
+        try_cast(nullif(trim(total_general_votes_cast), '') as double) as int
     ) as total_general_votes_cast,
 
     -- assessments

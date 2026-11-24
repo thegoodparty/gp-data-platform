@@ -17,12 +17,20 @@
     The registry loop runs here, not in the staging model: this table stores the
     typed columns the loop produces and staging projects them.
 -#}
+{#- on_schema_change: a registry row added later becomes a column here and in
+    the staging model's loop. Without it the table never gains the column and
+    staging fails on an unresolved one, because full_refresh is refused here on
+    purpose. Appending is not enough by itself: the lastmodifieddate watermark
+    skips unchanged contacts, so the new column stays NULL until the one run with
+    hubspot_contacts_history_rescan set. Both steps are documented in the model
+    yaml and in the registry macro. -#}
 {{
     config(
         materialized="incremental",
         incremental_strategy="merge",
         unique_key="id",
         full_refresh=false,
+        on_schema_change="append_new_columns",
     )
 }}
 
@@ -78,21 +86,10 @@
         -- Which producer the row's winning values came from. Not published: the
         -- staging model drops it. It makes the seed window auditable and it is
         -- what lets a cast-loss check compare within one source at a time.
-        -- Last in the list in both branches on purpose: a Databricks merge maps
-        -- the source columns to the target by position.
         'lakeflow' as _source
-    from {{ source("lakeflow_source", "contacts") }}
-    -- >= not >: a row delivered with a timestamp equal to the stored maximum is
-    -- re-merged rather than skipped, which costs one tie window of redundant work
-    -- and closes the commonest skip. The residual, a row delivered strictly older
-    -- than the stored maximum, waits for its next change; a per-row payload
-    -- comparison would close it at the cost of scanning every row across every
-    -- column on every run.
-    where
-        lastmodifieddate >= (
-            select coalesce(max(lastmodifieddate), cast('1900-01-01' as timestamp))
-            from {{ this }}
-        )
+    from
+        {{ source("lakeflow_source", "contacts") }}
+        {{ hubspot_contacts_history_watermark() }}
 
 {% else %}
     with

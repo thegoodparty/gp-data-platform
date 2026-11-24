@@ -355,6 +355,14 @@ models:
       Columns are typed by the hubspot_contact_property_columns registry, the same
       one stg_airbyte_source__hubspot_api_contacts used to apply, so downstream sees
       the same shape.
+
+      Adding a registry property takes three steps: add the seed row, full-refresh
+      the contacts table in the Lakeflow pipeline (Lakeflow has no schema
+      evolution), then run dbt once with `--vars '{hubspot_contacts_history_rescan:
+      true}'`. The rescan is needed because the watermark filter would otherwise
+      skip every unchanged contact, leaving the new column NULL. Frozen
+      Airbyte-only rows keep NULL for the new property, which is expected: the
+      property is one the frozen extract never carried.
     columns:
       - name: id
         description: HubSpot contact Record ID.
@@ -375,6 +383,33 @@ models:
         description: >
           HubSpot's last modified time, carried so the incremental run's watermark
           filter can read it.
+      # Sensitivity tags, as top-level column keys: under config: they drop
+      # silently. Same classifications the staging model already carries, which a
+      # reader of the mart layer would otherwise not see one layer down.
+      - name: address
+        databricks_tags:
+          sensitive: confidential
+      - name: birth_date
+        databricks_tags:
+          sensitive: confidential
+      - name: first_name
+        databricks_tags:
+          sensitive: confidential
+      - name: full_name
+        databricks_tags:
+          sensitive: confidential
+      - name: last_name
+        databricks_tags:
+          sensitive: confidential
+      - name: email
+        databricks_tags:
+          sensitive: identifier
+      - name: phone
+        databricks_tags:
+          sensitive: identifier
+      - name: clean_phone
+        databricks_tags:
+          sensitive: identifier
 
   - name: int__hubspot_owners_history
     description: |

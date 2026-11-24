@@ -9,6 +9,14 @@
     The loop runs in int__hubspot_contacts_history, not in the staging model:
     the history table stores the typed columns, and staging projects them. Any
     new caller is an intermediate model, not a staging one.
+
+    Adding a status='generated' row therefore adds a column to an incremental
+    table, which takes three steps: add the seed row, full-refresh the contacts
+    table in the Lakeflow pipeline (no schema evolution), then run dbt once with
+    --vars '{hubspot_contacts_history_rescan: true}'. The model appends the column
+    on that run, and the rescan drops the lastmodifieddate watermark so the
+    already-unchanged rows are merged again and the column is filled; without it
+    only contacts that changed since the last run would get a value.
 -#}
 {% macro hubspot_lakeflow_absent_properties() %}
     {#- Registry properties with no Lakeflow column, so the flat-column half of
@@ -138,4 +146,30 @@
             )
         }}
     {%- endif -%}
+{% endmacro %}
+
+
+{% macro hubspot_contacts_history_watermark() %}
+    {#- The change filter on int__hubspot_contacts_history's incremental branch.
+
+        Default is >= not >: a row delivered with a timestamp equal to the stored
+        maximum is re-merged rather than skipped, which costs one tie window of
+        redundant work and closes the commonest skip. The residual, a row
+        delivered strictly older than the stored maximum, waits for its next
+        change; a per-row payload comparison would close it at the cost of
+        scanning every row across every column on every run.
+
+        hubspot_contacts_history_rescan drops the predicate, so one run re-merges
+        every current Lakeflow row. That is always safe, because the current
+        Lakeflow row is the newest truth for its id, and it is the recovery path
+        after a new registry property (the watermark would otherwise skip every
+        unchanged contact and leave the new column NULL) and after a Lakeflow
+        full refresh leaves the watermark ahead of a re-loaded table. -#}
+    {%- if not var("hubspot_contacts_history_rescan", false) %}
+        where
+            lastmodifieddate >= (
+                select coalesce(max(lastmodifieddate), cast('1900-01-01' as timestamp))
+                from {{ this }}
+            )
+    {%- endif %}
 {% endmacro %}
