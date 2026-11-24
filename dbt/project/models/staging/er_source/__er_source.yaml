@@ -753,5 +753,11 @@ models:
         description: Splink posterior that the pair is the same person.
         data_tests:
           - not_null
+      - name: gamma_birth_year
+        description: >
+          Splink comparison level for birth year, derived from the tagged
+          birth_date. Open: the year alone is not identifying.
+        databricks_tags:
+          open: "true"
       - name: match_key
         description: Index of the blocking rule that generated the pair.

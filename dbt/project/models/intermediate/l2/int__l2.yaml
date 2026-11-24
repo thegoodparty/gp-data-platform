@@ -230,7 +230,139 @@ models:
 
   - name: int__l2_nationwide_uniform_raw_districts
     description: "Combined uniform voter file data from all states"
+    config:
+      databricks_tags:
+        classified: "true"
+      # Delta keeps stats on at most 32 columns and takes them from
+      # delta.dataSkippingStatsColumns. When that property does not name the
+      # clustering columns, they get no stats and the OPTIMIZE dbt runs after
+      # every write fails with DELTA_CLUSTERING_COLUMN_MISSING_STATS. Two ways to
+      # get there: prod's table carries a stale 36-column property whose first 32
+      # are ConsumerData columns, and a brand-new table lets Delta auto-select 32
+      # columns that miss the clustering ones the same way.
+      #
+      # skip_optimize turns off the OPTIMIZE the materialization runs, which is
+      # the statement that fails, and the post_hook runs the same OPTIMIZE itself
+      # after naming the clustering columns. The OPTIMIZE has to still happen: it
+      # is what maintains the clustering on a 219M-row table. A post_hook alone
+      # is not enough, because dbt runs the materialization's own OPTIMIZE before
+      # it reaches post_hooks, and the tblproperties config does not apply to a
+      # Python model's table at all.
+      #
+      # The pre_hook covers the other half. On an existing table carrying a bad
+      # property, the write itself can fail before the post_hook is reached, so
+      # heal it up front too. Guarded, because a first build has no table to
+      # alter yet -- and there the post_hook is what fixes it.
+      skip_optimize: true
+      pre_hook:
+        - "{% if load_relation(this) %}alter table {{ this }} set tblproperties ('delta.dataSkippingStatsColumns' = 'state_postal_code,Residence_Addresses_Zip,LALVOTERID'){% endif %}"
+      post_hook:
+        - "alter table {{ this }} set tblproperties ('delta.dataSkippingStatsColumns' = 'state_postal_code,Residence_Addresses_Zip,LALVOTERID')"
+        - "optimize {{ this }}"
     columns:
+      # Tagged by hand, not inherited: a Python model has no SQL lineage, so the
+      # tags these columns would have picked up from the L2 source columns
+      # through propagation never arrive. Same 33 columns and the same two
+      # values as the L2 sensitive-tag seed, which is what the raw tables carry.
+      - name: Voters_FirstName
+        databricks_tags:
+          sensitive: confidential
+      - name: Voters_MiddleName
+        databricks_tags:
+          sensitive: confidential
+      - name: Voters_LastName
+        databricks_tags:
+          sensitive: confidential
+      - name: Voters_StateVoterID
+        databricks_tags:
+          sensitive: identifier
+      - name: Voters_CountyVoterID
+        databricks_tags:
+          sensitive: identifier
+      - name: Voters_BirthDate
+        databricks_tags:
+          sensitive: confidential
+      - name: Residence_Addresses_AddressLine
+        databricks_tags:
+          sensitive: confidential
+      - name: Residence_Addresses_ExtraAddressLine
+        databricks_tags:
+          sensitive: confidential
+      - name: Residence_Addresses_HouseNumber
+        databricks_tags:
+          sensitive: confidential
+      - name: Residence_Addresses_ApartmentNum
+        databricks_tags:
+          sensitive: confidential
+      - name: Residence_Addresses_DPBC
+        databricks_tags:
+          sensitive: confidential
+      - name: Residence_Addresses_Latitude
+        databricks_tags:
+          sensitive: confidential
+      - name: Residence_Addresses_Longitude
+        databricks_tags:
+          sensitive: confidential
+      - name: Mailing_Addresses_AddressLine
+        databricks_tags:
+          sensitive: confidential
+      - name: Mailing_Addresses_ExtraAddressLine
+        databricks_tags:
+          sensitive: confidential
+      - name: Mailing_Addresses_HouseNumber
+        databricks_tags:
+          sensitive: confidential
+      - name: Mailing_Addresses_ApartmentNum
+        databricks_tags:
+          sensitive: confidential
+      - name: Mailing_Addresses_DPBC
+        databricks_tags:
+          sensitive: confidential
+      - name: VoterTelephones_LandlineFormatted
+        databricks_tags:
+          sensitive: identifier
+      - name: VoterTelephones_LandlineUnformatted
+        databricks_tags:
+          sensitive: identifier
+      - name: VoterTelephones_Landline7Digit
+        databricks_tags:
+          sensitive: identifier
+      - name: VoterTelephones_CellPhoneFormatted
+        databricks_tags:
+          sensitive: identifier
+      - name: VoterTelephones_CellPhoneUnformatted
+        databricks_tags:
+          sensitive: identifier
+      - name: ConsumerData_MAID_MAID1
+        databricks_tags:
+          sensitive: identifier
+      - name: ConsumerData_MAID_MAID2
+        databricks_tags:
+          sensitive: identifier
+      - name: ConsumerData_MAID_MAID3
+        databricks_tags:
+          sensitive: identifier
+      - name: ConsumerData_MAID_MAID4
+        databricks_tags:
+          sensitive: identifier
+      - name: ConsumerData_MAID_MAID5
+        databricks_tags:
+          sensitive: identifier
+      - name: ConsumerData_MAID_IP1
+        databricks_tags:
+          sensitive: identifier
+      - name: ConsumerData_MAID_IP2
+        databricks_tags:
+          sensitive: identifier
+      - name: ConsumerData_MAID_IP3
+        databricks_tags:
+          sensitive: identifier
+      - name: ConsumerData_MAID_IP4
+        databricks_tags:
+          sensitive: identifier
+      - name: ConsumerData_MAID_IP5
+        databricks_tags:
+          sensitive: identifier
       - name: state_postal_code
         description: "Uppercase two-letter state postal code"
         tests:
@@ -258,6 +390,8 @@ models:
       that produced each row, so the underlying model can be swapped without
       renaming anything.
     config:
+      databricks_tags:
+        classified: "true"
       meta:
         # Most recent year of L2 vote history present (drives the feature window).
         max_vote_history_year: "{{ var('max_vote_history_year', 2025) }}"
@@ -383,6 +517,8 @@ models:
       probabilities skew low by construction (out-of-distribution vs the
       precinct-trained model) but aggregate back to the precinct projections.
     config:
+      databricks_tags:
+        classified: "true"
       # Monthly, matching the L2 refresh cadence: a full build scores ~218M rows and
       # takes hours, and new registrations only arrive with an L2 load, so a shorter
       # cadence would burn cluster time without changing the output.
@@ -516,6 +652,8 @@ models:
       cuts yet for a new fingerprint, an incremental run leaves the table
       unchanged and a first build or full refresh fails.
     config:
+      databricks_tags:
+        classified: "true"
       # Monthly, with the L2 refresh: new registrants only arrive with an L2 load.
       tags: ["monthly"]
       meta:
@@ -643,6 +781,8 @@ models:
     description: "Combined Haystaq issue model flags from all states (loaded from per-state L2 Haystaq flags tables)"
     config:
       tags: ["monthly"]
+      databricks_tags:
+        classified: "true"
       # A rebuild drops columns L2 has retired while
       # delta.dataSkippingStatsColumns still names them, which Delta rejects.
       # Clearing it first lets the rebuild through.
@@ -653,6 +793,13 @@ models:
         # optional: comma/space-separated list like \"AK,AL\" for iterative runs
         l2_state_allowlist: "{{ var('l2_state_allowlist', '') }}"
     columns:
+      # No column-level tags. This model selects LALVOTERID, loaded_at and the
+      # per-state hf_* Haystaq flag columns, and nothing else: the voter
+      # identity columns the uniform models carry do not exist here. The flags
+      # are modeled issue attributes, which rule 5 of the classification
+      # leaves open once the row no longer points at a person. The model-level
+      # classified tag above is still required, because a Python model has no
+      # SQL lineage to inherit it from.
       - name: LALVOTERID
         description: "The ID of the voter"
         tests:
@@ -663,6 +810,8 @@ models:
     description: "Combined Haystaq issue model scores from all states (loaded from per-state L2 Haystaq scores tables)"
     config:
       tags: ["monthly"]
+      databricks_tags:
+        classified: "true"
       # A rebuild drops columns L2 has retired while
       # delta.dataSkippingStatsColumns still names them, which Delta rejects.
       # Clearing it first lets the rebuild through.
@@ -772,6 +921,9 @@ models:
       (zip_code, state_postal_code, district_type, district_name) with the
       L2 voter count in that intersection and the total L2 voter count for
       the zip. No threshold is applied; downstream consumers decide cutoffs.
+    config:
+      databricks_tags:
+        classified: "true"
     columns:
       - name: zip_code
         description: "5-digit zip code"

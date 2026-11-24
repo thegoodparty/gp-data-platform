@@ -1,30 +1,27 @@
-with
-    source as (
-        select * from {{ source("airbyte_source", "hubspot_api_owners_archived") }}
-    ),
-    renamed as (
-        select
-            {{ adapter.quote("_airbyte_raw_id") }},
-            {{ adapter.quote("_airbyte_extracted_at") }},
-            {{ adapter.quote("_airbyte_meta") }},
-            {{ adapter.quote("_airbyte_generation_id") }},
-            int({{ adapter.quote("id") }}) as id,
-            {{ adapter.quote("email") }},
-            from_json(
-                {{ adapter.quote("teams") }},
-                'array<struct<id:string,name:string,primary:boolean>>'
-            ) as teams,
-            {{ adapter.quote("userId") }} as user_id,
-            {{ adapter.quote("archived") }},
-            {{ adapter.quote("lastName") }} as last_name,
-            to_timestamp({{ adapter.quote("createdAt") }}) as created_at,
-            {{ adapter.quote("firstName") }} as first_name,
-            to_timestamp({{ adapter.quote("updatedAt") }}) as updated_at,
-            int(
-                {{ adapter.quote("userIdIncludingInactive") }}
-            ) as user_id_including_inactive
-
-        from source
-    )
-select *
-from renamed
+-- Reads int__hubspot_owners_history: the never-delete layer, and the only place
+-- an archived owner survives because Lakeflow returns none.
+--
+-- Archived means absent from the live Lakeflow snapshot, not `archived = true` on
+-- the history row, which keeps its last value and would read as active forever.
+-- The Airbyte transaction columns stay so the view shape is unchanged; they have
+-- no Lakeflow equivalent, so a Lakeflow owner has NULL there.
+select
+    history._airbyte_raw_id,
+    history._airbyte_extracted_at,
+    history._airbyte_meta,
+    history._airbyte_generation_id,
+    history.id,
+    history.email,
+    history.teams,
+    history.user_id,
+    history.archived,
+    history.last_name,
+    history.created_at,
+    history.first_name,
+    history.updated_at,
+    history.user_id_including_inactive
+from {{ ref("int__hubspot_owners_history") }} as history
+left join
+    (select distinct id from {{ source("lakeflow_source", "owners") }}) as live
+    on history.id = live.id
+where live.id is null

@@ -26,6 +26,16 @@ vars:
   # on or after this date: the daily loop's cutover. Earlier matches came from other matchers and
   # stay served until the guards are extended to them by moving this date.
   l2_br_match_guards_from: "2026-09-19"
+  # The schema the Lakeflow HubSpot pipeline lands in. Dev while the prod schema
+  # is undecided (owner call); production sets it to the prod schema. Defaulted
+  # here only, with no per-target override, so dev, CI and prod read the same
+  # populated schema until that cutover.
+  lakeflow_hubspot_schema: "lakeflow_source_dev"
+  # One-run escape hatch for int__hubspot_contacts_history: drops its
+  # lastmodifieddate watermark so every current Lakeflow row re-merges. Needed
+  # after a new registry property, and after a Lakeflow full refresh. Not a
+  # full refresh of the history table, which stays refused on purpose.
+  hubspot_contacts_history_rescan: false
   # Must match ELECTION_DATE_WINDOW_DAYS in matcha/scripts/configs/candidacy.py
   # (the matcher's contract source of truth). Update both together.
   er_election_date_window_days: 10
@@ -57,6 +67,14 @@ vars:
   # The live Stripe product Pro is sold under. Mirrors LIVE_PRODUCT_ID in omni's
   # StripeService; move them together. The Stripe and Pro drift test scopes to it.
   stripe_pro_product_id: "prod_QCGFVVUhD6q2Jo"
+  # Engagement types whose Lakeflow activity row wins over the frozen feed on a
+  # shared id. Empty on purpose: the Lakeflow activity tables carry no contact
+  # associations, and the touch history drops unassociated activities, so
+  # flipping a type here before the activity associations are loaded empties
+  # most of the user journey while the staging row count stays flat. Populate it
+  # one type at a time, against measured attribution, once those associations
+  # exist.
+  lakeflow_authoritative_engagement_types: []
 
 # Configuring models
 # Full documentation: https://docs.getdbt.com/docs/configuring-models
@@ -153,6 +171,16 @@ models:
         +tags: ["segment", "monthly"]
       l2_commercial:
         +materialized: table
+
+# Seed tables are read by analyst, and a table the row filter does not see as
+# classified reads as empty to it. dbt writes no databricks_tags for seeds (the
+# documented YAML key and the project-level key both leave
+# information_schema.column_tags and table_tags untouched), so the tag goes on
+# with a post-hook after the seed loads.
+seeds:
+  goodparty_data_catalog:
+    +post-hook:
+      - "alter table {{ this }} set tags ('classified' = 'true')"
 
 # Use the user's home folder for uploading python notebooks
 # Shared folder use is deprecated due to governance concerns.

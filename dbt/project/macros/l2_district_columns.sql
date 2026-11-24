@@ -23,18 +23,40 @@
     either scope's list marks the other scope's downstream models
     state:modified, not just its own.
 
-    COUPLING: adding a type to all_types also needs a --full-refresh of
-    int__l2_district_aggregations in the same change. int__l2_district_universe
-    (a plain table) carries the new type on its next build; the aggregation
-    (an incremental) only admits it per state on that state's next L2
-    delivery, so int__l2.yaml's canonicalization test on the universe reds
-    until every state redelivers.
+    COUPLING: adding or RENAMING a type in all_types also needs a
+    --full-refresh of int__l2_district_aggregations in the same change.
+    int__l2_district_universe (a plain table) carries the new type on its next
+    build; the aggregation (an incremental over rows newer than its own global
+    max(loaded_at)) only admits it per state on that state's next L2 delivery,
+    so int__l2.yaml's canonicalization test on the universe reds until every
+    state redelivers.
+
+    A rename counts: Designated_Market_Area_DMA became MMA_Zone in the
+    2026-11-17 delivery, which had already loaded, so an ordinary incremental
+    run kept 2 MMA_Zone rows where the universe had 532; a --full-refresh
+    produced 532. The on-merge job's --full-refresh of state:modified covers
+    this, since editing this macro marks every model that calls it modified.
+
+    Removing a type needs the same refresh for the mirror reason: the merge
+    never deletes, so the retired type's rows stay in the aggregation and keep
+    naming a column the voter file no longer has. int__zip_code_to_l2_district
+    reads its district types from int__model_prediction_voter_turnout, so it
+    intersects that list with the columns L2 actually ships rather than
+    trusting it, but the stale rows still have to be cleared.
 
     Args:
         scope (str): 'all' or 'allocated'.
 
     Returns:
         list: bare column names, no backticks.
+
+    MMA_Zone is L2's rename of Designated_Market_Area_DMA, arriving in the
+    delivery that landed 2026-11-17; the values were tightened to the official
+    Nielsen form at the same time, so "LOS ANGELES DMA" became
+    "LOS ANGELES MMA (CA/NV)". Nothing keys on the values, so the name is the
+    whole of the change. It went unnoticed because a merge with
+    append_new_columns keeps a retired column forever: only a build that
+    recreated these views from the source could see the old name was gone.
     -#}
     {%- set all_types = [
         "4H_Livestock_District",
@@ -100,7 +122,6 @@
         "County_Water_District",
         "County_Water_Landowner_District",
         "County_Water_SubDistrict",
-        "Designated_Market_Area_DMA",
         "District_Attorney",
         "Drainage_District",
         "Education_Commission_District",
@@ -173,6 +194,7 @@
         "Metro_Transit_District",
         "Metropolitan_Water_District",
         "Middle_School_District",
+        "MMA_Zone",
         "Mosquito_Abatement_District",
         "Mountain_Water_District",
         "Multi_township_Assessor",

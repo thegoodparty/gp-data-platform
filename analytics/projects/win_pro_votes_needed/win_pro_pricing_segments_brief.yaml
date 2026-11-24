@@ -1,0 +1,279 @@
+brief_id: win-pro-pricing-segments-2026
+created: 2026-11-12
+author: framing routine (refined with Tristan)
+ticket: DATA-2810 (sub-analysis of DATA-2809, https://app.clickup.com/t/17tnw2bf29v)
+
+decision:
+  what_action: |
+    Decide which customer segments, if any, Win Pro pricing and packaging should be built on
+    (tiers, bundles, add-ons). DATA-2809 tested race size. This tests whether any other
+    dimension separates Pro usage enough to price on. "Nothing separates them beyond race
+    size" is a valid answer and would point packaging at race size alone.
+  who_acts: |
+    Product (Bryan) in the Win pricing and packaging work; sales for the bundle proposal.
+
+question:
+  one_sentence: |
+    Among paying Win Pro customers with a 2026 election, which dimensions known at purchase
+    separate text volume, outreach spend, channel use or feature use, and how strongly
+    compared with race size?
+  type: descriptive
+  underlying_hypothesis: |
+    Pro customers are not one market. Some segment other than race size (office, incumbency,
+    experience, how and when they bought) uses Win differently enough to justify a different
+    package.
+
+population:
+  included: |
+    Identical to the DATA-2809 population (win_pro_votes_needed_brief.yaml after its
+    2026-11-12 re-frame), built by the same population_sql() in build_working_set.py:
+    users with a 2026 election (coalesce(candidacy_general_election_date,
+    candidacy_election_date)) who are Pro today or whose subscription ended on or after
+    election day. 783 users as of 2026-11-12 18:15 UTC (652 Pro today, 131 canceled after).
+  excluded: |
+    Staff, demo campaigns, comped Pro (never made a subscription payment), Pro that ended
+    before election day. Same as DATA-2809.
+  source_model: |
+    The DATA-2809 working set and area-days (reused unchanged, rebuilt with a fresh run), plus
+    one added query on mart_analytics.user_journey for the dimension columns below, keyed on
+    user_id. No new upstream reads.
+
+data_provenance:
+  schema_status: prod
+  coverage_start: |
+    As DATA-2809. pro_since (first Stripe subscription payment) is dated for about 84% of the
+    population; the rest is an "unknown" bucket. Team events start 2026-09-10 (not used as a
+    dimension).
+  coverage_end: Current to the run date; the run timestamp is pinned and printed.
+  post_merge_swap: N/A, all sources are prod.
+
+eligibility:
+  tenure_requirement: None beyond the population rule (as DATA-2809).
+  reference_event: Election date.
+  rationale: Pricing applies to every paying Pro customer, so no one is dropped.
+
+dimensions:
+  rule: |
+    Every dimension is known when the customer buys Pro, except contested vs uncontested,
+    which is kept but flagged (it settles at the filing deadline, often after purchase).
+    Any value with fewer than 30 users is folded into "other" or shown as a count only.
+    Missing values are their own row, never dropped.
+  list:
+    - office_level: candidacy_office_level_normalized (city, county, state, federal, unknown)
+    - office_category: candidacy_office_category, categories with 30+ users, rest "other"
+    - state: candidacy_state, states with 30+ users, rest "other"
+    - incumbent: candidacy_is_incumbent (incumbent, challenger, unknown)
+    - repeat_candidate: election_year_count > 1 (repeat vs first-time). Not has_run_before,
+        which misses most re-runners.
+    - partisan: candidacy_partisan_type (partisan incl. "partisan for primary only",
+        nonpartisan, unknown)
+    - contested: candidacy_is_uncontested (contested, uncontested, unknown); flagged as
+        partly known at purchase, and the estimated share is shown
+    - opponents: candidacy_number_of_opponents (1, 2, 3+, unknown); its counting rule is
+        checked against is_uncontested first (execution step 3)
+    - seats: candidacy_seats_available (single, multi-seat, unknown)
+    - pro_lead_time: days from date(pro_since) to election date (under 45, 45 to 89,
+        90 to 179, 180+, unknown); bins from the quartiles seen in framing (40 / 75 / 156)
+    - onboarding_to_pro: onboarding_completed_to_pro_days (same day, 1 to 7, 8 to 30, 31+,
+        unknown)
+    - icp_office: candidacy_is_win_icp (ICP, not ICP, unknown)
+    - acquisition_motion: sales_sourced vs marketing_sourced
+    - acquisition_source: hs_analytics_source (offline, direct, paid search, organic search,
+        paid social, other, unknown)
+  yardstick: votes-needed band, exactly as DATA-2809 (the known separator)
+  stratifier_only: signup era (registered_at before vs from 2026-07-01); not a pricing lever
+  dropped_in_framing: |
+    DATA-2690 usage groups (defined by usage, so circular, and July-on signups only);
+    team use (launched 2026-09-10, about 75 inviters, post-purchase; one descriptive line);
+    party (repeats partisan); open seat (30% unknown, overlaps incumbency); legitimacy
+    (57% blank); judicial and Serve user (too small); plan amount (everyone is $10);
+    activation, power user, activity (post-purchase outcomes, not segments).
+
+target:
+  definition: |
+    The DATA-2809 outcomes, unchanged definitions, fixed before any run:
+      All 783:
+        1. texted (any committed texting send)
+        2. over 5,000 texts (range: known counts as the lower bound, unknown-count texters
+           counted as over for the upper bound)
+        3. median texts among texters with a known count
+        4. paid for outreach (net outreach dollars > 0)
+        5. median net outreach dollars among payers
+        6. no outreach at all
+        7-10. used robocall, social, door knocking, phone banking
+      Races from 2026-07-15 only (feature events record nothing earlier):
+        11-15. acted in outreach, voter data, AI assistant, story and issues, opponent research
+    Activated (governed is_activated) is a second view of the headline table only.
+  censoring: As DATA-2809 (future elections kept, flagged, re-checked without them).
+  absorbing_states: As DATA-2809.
+
+comparison:
+  type: descriptive_cut
+  comparison_group: |
+    Each value of a dimension against everyone else in the population (one vs rest).
+  method: |
+    No fixed effect-size bar (dropped in framing as arbitrary). Each dimension x outcome gets:
+      - the gap with a 95% interval: rate gaps in points (Wilson intervals per group, Newcombe
+        interval on the difference, two-proportion test); median gaps as a ratio with a
+        bootstrap interval (2,000 resamples) and a Mann-Whitney test.
+      - a bin:
+          Clear: Benjamini-Hochberg q < 0.10 across the full grid of one-vs-rest tests,
+            and the gap points the same way in both signup eras.
+          Possible: points the same way in both eras but does not clear the correction.
+          No difference: everything else.
+        Era direction is "not checkable" where either era has fewer than 15 users in the
+        group; such a gap cannot be Clear.
+      - a label "explained by race size" when the gap averaged within votes-needed bands
+        (weighted by group size) is under half the raw gap or flips sign. A label, not a
+        filter; the raw gap is what is shown.
+      - the yardstick: the same gap computed for the votes-needed bands, shown beside it.
+      - pricing units where the outcome allows: texts, dollars at 3.1 to 3.5 cents a text,
+        and the share over the 5,000-text allowance.
+  notes: |
+    Association only. Dimensions overlap each other (office level vs category, motion vs
+    source, office vs race size); an overlap table (Cramér's V) is shown so two cuts of the
+    same thing are not read as two findings.
+
+observation_window:
+  start: Six months before the election date (as DATA-2809).
+  end: End of election day (as DATA-2809).
+  anchored_to: Election date.
+  boundary_semantics: |
+    As DATA-2809: event_time >= add_months(election_date, -6) at 00:00 UTC and
+    event_time < election_date + 1 day at 00:00 UTC. pro_lead_time and onboarding_to_pro are
+    whole-day differences between dates.
+
+cohorts:
+  - dimension: the 14 dimensions above
+    values: as listed
+  - dimension: votes_needed_band (yardstick)
+    values: the five DATA-2809 bands
+  - dimension: signup_era (stratifier for the direction check)
+    values: before 2026-07-01, from 2026-07-01
+  - dimension: activated (second view)
+    values: headline table only
+
+sample_size:
+  expected_n_total: 783 (629 for feature outcomes).
+  expected_n_per_cohort: |
+    Two-way splits run from about 100 to 650 per side; multi-value dimensions have values
+    down to 30. Signup eras roughly half each.
+  power_concern: |
+    Smallest reliably detectable gap in a ~47% rate, group vs the rest (80% power, 5% level):
+    about 19 points at 60 users, 15 at 100, 12 at 200, 10 at an even split. This table goes
+    on the page so "no difference" reads as "no gap larger than X", not as proof of none.
+
+falsification:
+  what_would_change_belief: |
+    No dimension reaches Clear without the "explained by race size" label: Pro usage does not
+    separate beyond race size, and packaging should scale with race size or stay flat.
+    A dimension reaches Clear, holds in both eras, and is not explained by race size: it is a
+    pricing candidate, reported in pricing units with its group size.
+
+known_concerns:
+  - |
+    About 200 one-vs-rest tests: some "Possible" results are expected by chance; that is why
+    only Clear results lead.
+  - |
+    pro_since is missing for about 16%, so the lead-time and onboarding-to-Pro "unknown"
+    buckets are not random (more sales-led and older accounts).
+  - |
+    Offline acquisition source likely duplicates sales-sourced; the overlap table decides
+    whether both are reported.
+  - |
+    Contested vs uncontested is partly known only after purchase; any finding there is
+    marked as not usable at the point of sale.
+  - |
+    Unattributed sends (DATA-2809) understate channel use evenly or unevenly across segments;
+    the unattributed share is shown per dimension value.
+  - |
+    Feature outcomes cover 629 races; the early 154 drop out by construction, which shifts
+    signup era composition for those outcomes.
+
+execution_notes:
+  preferred_format: scripts (no notebook), then a findings page
+  output_location: |
+    analytics/projects/win_pro_votes_needed/ on branch data-2810/pro-pricing-segments:
+      build_segments.py: the one dimension query, writes datasets/segments.parquet
+      analyze_segments.py: every cut in pandas, imports load() from analyze.py, prints all
+        tables, writes segments_results.json
+    Findings page (Claude artifact, references/findings-page.md layout) only after the
+    reviewers land.
+  steps: |
+    1. Pin and print current_timestamp(); rebuild the DATA-2809 working set in the same run.
+    2. Confirm the join gives 783 users with one dimension row each.
+    3. Check candidacy_number_of_opponents against is_uncontested (does 1 mean one opponent
+       or one candidate?) and set the bins accordingly before any outcome is cut.
+    4. Print coverage and value counts per dimension; fold values under 30.
+    5. Print the overlap table (Cramér's V) between every pair of dimensions and with
+       votes-needed band.
+    6. Compute the grid, the bins, the race-size label and the yardstick.
+    7. Re-run the Clear results without future elections, and in the activated view.
+    8. One descriptive line on team use (invited anyone, by Pro status).
+  reruns: One-off.
+
+amendments:
+  - date: 2026-11-12
+    kind: amend (dimension sources and bins; population, target and comparison unchanged)
+    changes: |
+      1. pro_lead_time and onboarding_to_pro read first_subscription_payment_at instead of
+         pro_since. pro_since is null for exactly the 131 users who canceled after their
+         election, so its "unknown" bucket would have been the canceled group. Where both
+         exist they are the same day (652 of 652). onboarding_to_pro is recomputed as days from
+         onboarding_completed_at to that payment (onboarding missing for 137: unknown).
+      2. number_of_opponents counts opponents (0 = uncontested, 8 users). Bins: 0 to 1, 2,
+         3+, unknown. Contested vs uncontested has 15 uncontested users, under 30, so it is
+         shown as counts only and cannot be tested.
+      3. hs_analytics_source OFFLINE is exactly the 273 sales-sourced users, so that value
+         restates acquisition_motion; acquisition_source labels it "sales (offline)".
+    requested_by: execution step 3 and 4 findings, logged for Tristan's results checkpoint.
+  - date: 2026-11-12
+    kind: amend (adds a stratifier; population, target and comparison unchanged)
+    changes: |
+      1. CaS support added as a stratifier and reported on its own (a post-purchase service, not
+         a segment). Rule: the DATA-2742 results-coverage rule (1+ call, or 2+ emails or texts,
+         from a HubSpot "Campaign Success" team owner) plus meetings, counted to the end of
+         election day. Three levels: no CaS contact; CaS before any outreach; CaS only after
+         outreach began. Every upgrade is auto-scheduled a CaS call, so contact marks customers
+         who engaged with it, which is partly their own intent (Tristan, 2026-11-12).
+      2. Each Clear result gets a self-serve check: the gap among customers with no CaS contact,
+         as a share of the raw gap; under half is labeled "only among CaS-engaged". An average
+         across CaS groups was tried first and dropped: CaS interacts with segments (gaps appear
+         only among the engaged) rather than confounding them, so averaging hid it.
+    requested_by: Tristan, suspecting ICP is a result of CaS support rather than a customer type.
+  - date: 2026-11-16
+    kind: amend (one outcome's denominator; population and comparison unchanged)
+    changes: |
+      Outcome 2 (over 5,000 texts) is measured among texters, not all 783. About half the
+      population never texts, so the all-customer rate (21% to 35%) read as the allowance
+      covering most customers; among texters it is 46% to 75%, and 57% to 83% at 2,500+ votes
+      needed. The all-customer rate mostly restated "texted" (no CaS contact 7% vs CaS before
+      outreach 30% overall, 39% vs 48% among texters). The grid tests the lower bound among
+      texters; the page shows the known-to-upper range by CaS group and votes-needed band.
+    requested_by: Tristan, 2026-11-16, reading the activated view against the headline.
+  - date: 2026-11-18
+    kind: amend (outcome 2 and 3 measurement; definitions, population and comparison unchanged)
+    changes: |
+      Text counts: where gp-api holds a null or 0 billable count for a committed p2p send and
+      Amplitude's completion (or scheduled) event for the same outreach id carries recipientCount,
+      the Amplitude count is used (datasets/amp_text_fill.parquet, pinned to the same run).
+      int__user_outreach_sends keeps the gp-api row when both systems hold a send, so those counts
+      were dropped. Texters with no count fell from 105 to 70 (55 with no count anywhere, mostly
+      Feb-Jun 2026 sends; 15 with gp-api 0 and no Amplitude event). The over-5,000 share is written
+      "at least X%, up to Y%" everywhere, with a note on why it is a range. The model fix is a
+      separate ticket.
+    requested_by: Tristan, 2026-11-18, asking why the range exists and why Amplitude counts were unused.
+  - date: 2026-11-20
+    kind: amend (classification, CaS dating, outcome 2 ceiling, dimensions; population unchanged)
+    changes: |
+      After the methodology and product reviews. (1) The Possible bin is dropped; a significant
+      result is Clear only if it points the same way in both signup eras, otherwise "differs by
+      era" or "era not checkable", no longer filed as no difference. A Clear result with too few
+      self-serve customers to check is unresolved, not failed. (2) CaS contact is dated when it met
+      the rule (first call or meeting, or second email or text; datasets/cas_dates.parquet, keyed
+      on the run's users and capped at its timestamp), not at the first touch: 351 before outreach,
+      122 only after (was 378 and 95). (3) The over-5,000 ceiling also counts texters with a known
+      count plus sends no source counted (19 more at or under 5,000). (4) State is background only,
+      not a tested dimension. (5) The main body states CaS as association, shows the activated
+      text-volume interval, and names the unresolved and excluded results.
+    requested_by: Tristan, 2026-11-20, approving the reviewers' changes.

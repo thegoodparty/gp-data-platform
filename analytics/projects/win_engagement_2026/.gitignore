@@ -1,0 +1,3 @@
+datasets/*
+!datasets/early_voting_by_state.csv
+review/

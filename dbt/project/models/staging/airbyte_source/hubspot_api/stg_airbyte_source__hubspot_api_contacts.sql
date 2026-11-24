@@ -1,27 +1,51 @@
 -- depends_on: {{ ref("hubspot_contact_property_columns") }}
+-- Plain projection of the never-delete history layer over a frozen Airbyte feed
+-- plus Lakeflow; the registry loop that types the properties runs there.
+with
+    history as (select * from {{ ref("int__hubspot_contacts_history") }}),
+
+    -- Frozen extras: the 2026-11-17 associations, kept until the associations
+    -- loader replaces them, so a company unlinked since then still shows. Kept
+    -- here rather than in the history table, which stays Lakeflow-pure.
+    frozen_associations as (
+        select cast(id as string) as id, companies
+        from {{ source("airbyte_source", "hubspot_api_contacts") }}
+        where companies is not null and trim(companies) not in ('', '[]')
+    )
+
 select
-    -- airbyte record columns (everything else is a hubspot property,
-    -- generated from the hubspot_contact_property_columns seed registry;
-    -- to expose another property, add a status=generated row there)
-    id,
-    companies,
-    createdat as created_at,
-    updatedat as updated_at
-    {%- for prop in hubspot_generated_contact_properties() %}
-        ,
-        {{
-            hubspot_contact_property_expression(
-                prop.internal_name, prop.cast_type, prop.true_value, prop.false_value
+    history.id,
+    case
+        when history._source = 'lakeflow' and frozen_associations.id is not null
+        then
+            to_json(
+                array_distinct(
+                    concat(
+                        coalesce(
+                            from_json(history.companies, 'array<string>'), array()
+                        ),
+                        from_json(frozen_associations.companies, 'array<string>')
+                    )
+                )
             )
-        }} as {{ prop.column_name }}
+        else history.companies
+    end as companies,
+    history.created_at,
+    history.updated_at
+    {%- for prop in hubspot_generated_contact_properties() %}
+        , {{ prop.column_name }}
     {%- endfor %}
-from {{ source("airbyte_source", "hubspot_api_contacts") }}
+from history
+left join frozen_associations on history.id = frozen_associations.id
+-- On the resolved row, not the raw JSON: a Lakeflow row has no `properties`, and
+-- dsar_not_suppressed lets a NULL identifier pass. All three are qualified because
+-- the bridge joins a second relation, so a bare id would be ambiguous.
 where
     {{
         dsar_first_party_not_suppressed(
-            "id",
+            "history.id",
             "hs_contact_id",
-            "get_json_object(properties, '$.email')",
-            "get_json_object(properties, '$.phone')",
+            "history.email",
+            "history.phone",
         )
     }}

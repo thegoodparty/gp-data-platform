@@ -58,7 +58,6 @@ _CATEGORICAL_FEATURES = [
     "Parties_Description",
     "Residence_HHParties_Description",
     "ConsumerData_Homeowner_Probability_Model",
-    "Designated_Market_Area_DMA",
     "ConsumerData_Home_Purchase_Price_Code",
     "Voters_Gender",
     "ConsumerData_Credit_Rating",
@@ -432,6 +431,21 @@ def _file_digest(path, chunk_size=1 << 20):
     return h.hexdigest()[:16]
 
 
+# Features the promoted boosters were trained on that no L2 column can supply
+# any more. L2 renamed the media-market column Designated_Market_Area_DMA to
+# MMA_Zone on 2026-11-17 and changed its values ("LOS ANGELES DMA" ->
+# "LOS ANGELES MMA (CA/NV)"), so the trained categorical map no longer matches
+# even under the new name. Scoring keeps running with this feature absent, which
+# is what it was already doing silently: the encoder maps any unseen string to
+# NaN, so the old values would have been NaN regardless.
+#
+# Listed by name, on purpose, so the omission is a decision in the diff rather
+# than an effect of a rename. Drop an entry once the boosters are retrained on
+# the current column, which is the real fix; the categorical map has to be
+# rebuilt from the new strings at the same time.
+_TURNED_OFF_FEATURES = {"Designated_Market_Area_DMA"}
+
+
 def _make_scorer(model_file, cat_map, feat_names, booster_digest):
     """Build the mapInPandas closure. Carries only the Volume path (tiny) plus
     cat_map / feat_names; each executor reads the booster from the Volume once per
@@ -460,6 +474,21 @@ def _make_scorer(model_file, cat_map, feat_names, booster_digest):
         for pdf in iterator:
             if len(pdf) == 0:
                 continue
+            # Refuse to silently NaN-fill a trained categorical whose column is
+            # gone. Scoped to cat_map's keys: the lag features are legitimately
+            # absent for years L2 has not delivered, and filling those is the
+            # design, while a categorical key IS a source column name, so its
+            # absence means that column was renamed or dropped.
+            missing_categoricals = [feat for feat in cat_map if feat not in pdf.columns]
+            unexcused = [feat for feat in missing_categoricals if feat not in _TURNED_OFF_FEATURES]
+            if unexcused:
+                raise ValueError(
+                    f"booster was trained on categorical feature(s) absent from "
+                    f"the input, so they would be NaN on every row: {unexcused}. "
+                    "A renamed or dropped L2 column looks like this. Retrain the "
+                    "booster on the current name, or list the feature in "
+                    "_TURNED_OFF_FEATURES if scoring without it is intended."
+                )
             x = pd.DataFrame(index=pdf.index)
             for feat in feat_names:
                 x[feat] = pdf[feat] if feat in pdf.columns else np.nan

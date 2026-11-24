@@ -67,6 +67,7 @@ models:
                     "texting",
                     "robocall",
                     "social",
+                    "email",
                     "door_knocking",
                     "phone_banking",
                     "events",
@@ -287,6 +288,8 @@ models:
 
       - name: email
         description: User email from Amplitude user_properties. Used for internal exclusion.
+        databricks_tags:
+          sensitive: identifier
 
       - name: first_activity_at
         description: Earliest poll dashboard view in this month.

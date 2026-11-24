@@ -77,6 +77,8 @@ models:
         description: Always true; present so the flag reads clearly where joined.
       - name: has_email
         description: True when an upload supplied an email for the person.
+        databricks_tags:
+          open: "true"
 
   - name: serve_agent_contact_overlay_dev
     description: >
@@ -108,3 +110,5 @@ models:
         description: Always true; present so the flag reads clearly where joined.
       - name: has_email
         description: True when an upload supplied an email for the person.
+        databricks_tags:
+          open: "true"

@@ -11,6 +11,48 @@ models:
     description: "Nationwide uniform voter file data with Haystaq flags and scores joined on LALVOTERID"
     config:
       tags: ["monthly"]
+      databricks_tags:
+        classified: "true"
+      # A Python model gets no tags by propagation, and this one emits the L2
+      # identity columns, so they have to be declared here or every downstream
+      # table is classified with nothing marked sensitive and reads in the
+      # clear. They cannot go on the shared anchor below: serve_agent_voters and
+      # win_agent_voters reuse it and drop the identity columns, and a tag on a
+      # column a model does not have fails that model's build.
+      post_hook:
+        - "alter table {{ this }} alter column `Voters_FirstName` set tags ('sensitive' = 'confidential')"
+        - "alter table {{ this }} alter column `Voters_MiddleName` set tags ('sensitive' = 'confidential')"
+        - "alter table {{ this }} alter column `Voters_LastName` set tags ('sensitive' = 'confidential')"
+        - "alter table {{ this }} alter column `Voters_StateVoterID` set tags ('sensitive' = 'identifier')"
+        - "alter table {{ this }} alter column `Voters_CountyVoterID` set tags ('sensitive' = 'identifier')"
+        - "alter table {{ this }} alter column `Voters_BirthDate` set tags ('sensitive' = 'confidential')"
+        - "alter table {{ this }} alter column `Residence_Addresses_AddressLine` set tags ('sensitive' = 'confidential')"
+        - "alter table {{ this }} alter column `Residence_Addresses_ExtraAddressLine` set tags ('sensitive' = 'confidential')"
+        - "alter table {{ this }} alter column `Residence_Addresses_HouseNumber` set tags ('sensitive' = 'confidential')"
+        - "alter table {{ this }} alter column `Residence_Addresses_ApartmentNum` set tags ('sensitive' = 'confidential')"
+        - "alter table {{ this }} alter column `Residence_Addresses_DPBC` set tags ('sensitive' = 'confidential')"
+        - "alter table {{ this }} alter column `Residence_Addresses_Latitude` set tags ('sensitive' = 'confidential')"
+        - "alter table {{ this }} alter column `Residence_Addresses_Longitude` set tags ('sensitive' = 'confidential')"
+        - "alter table {{ this }} alter column `Mailing_Addresses_AddressLine` set tags ('sensitive' = 'confidential')"
+        - "alter table {{ this }} alter column `Mailing_Addresses_ExtraAddressLine` set tags ('sensitive' = 'confidential')"
+        - "alter table {{ this }} alter column `Mailing_Addresses_HouseNumber` set tags ('sensitive' = 'confidential')"
+        - "alter table {{ this }} alter column `Mailing_Addresses_ApartmentNum` set tags ('sensitive' = 'confidential')"
+        - "alter table {{ this }} alter column `Mailing_Addresses_DPBC` set tags ('sensitive' = 'confidential')"
+        - "alter table {{ this }} alter column `VoterTelephones_LandlineFormatted` set tags ('sensitive' = 'identifier')"
+        - "alter table {{ this }} alter column `VoterTelephones_LandlineUnformatted` set tags ('sensitive' = 'identifier')"
+        - "alter table {{ this }} alter column `VoterTelephones_Landline7Digit` set tags ('sensitive' = 'identifier')"
+        - "alter table {{ this }} alter column `VoterTelephones_CellPhoneFormatted` set tags ('sensitive' = 'identifier')"
+        - "alter table {{ this }} alter column `VoterTelephones_CellPhoneUnformatted` set tags ('sensitive' = 'identifier')"
+        - "alter table {{ this }} alter column `ConsumerData_MAID_MAID1` set tags ('sensitive' = 'identifier')"
+        - "alter table {{ this }} alter column `ConsumerData_MAID_MAID2` set tags ('sensitive' = 'identifier')"
+        - "alter table {{ this }} alter column `ConsumerData_MAID_MAID3` set tags ('sensitive' = 'identifier')"
+        - "alter table {{ this }} alter column `ConsumerData_MAID_MAID4` set tags ('sensitive' = 'identifier')"
+        - "alter table {{ this }} alter column `ConsumerData_MAID_MAID5` set tags ('sensitive' = 'identifier')"
+        - "alter table {{ this }} alter column `ConsumerData_MAID_IP1` set tags ('sensitive' = 'identifier')"
+        - "alter table {{ this }} alter column `ConsumerData_MAID_IP2` set tags ('sensitive' = 'identifier')"
+        - "alter table {{ this }} alter column `ConsumerData_MAID_IP3` set tags ('sensitive' = 'identifier')"
+        - "alter table {{ this }} alter column `ConsumerData_MAID_IP4` set tags ('sensitive' = 'identifier')"
+        - "alter table {{ this }} alter column `ConsumerData_MAID_IP5` set tags ('sensitive' = 'identifier')"
       # Set allow_l2_refresh: true to rebuild this 219M-row table.
       full_refresh: "{{ var('allow_l2_refresh', false) | as_bool }}"
       meta:
@@ -900,8 +942,6 @@ models:
         description: '{{ doc("l2col_Democratic_Convention_Member") }}'
       - name: "Democratic_Zone"
         description: '{{ doc("l2col_Democratic_Zone") }}'
-      - name: "Designated_Market_Area_DMA"
-        description: '{{ doc("l2col_Designated_Market_Area_DMA") }}'
       - name: "District_Attorney"
         description: '{{ doc("l2col_District_Attorney") }}'
       - name: "Drainage_District"
@@ -2264,6 +2304,8 @@ models:
         description: '{{ doc("l2col_Local_Hospital_District") }}'
       - name: "Local_Park_District"
         description: '{{ doc("l2col_Local_Park_District") }}'
+      - name: "MMA_Zone"
+        description: '{{ doc("l2col_MMA_Zone") }}'
       - name: "Mailing_Addresses_AddressLine"
         description: '{{ doc("l2col_Mailing_Addresses_AddressLine") }}'
       - name: "Mailing_Addresses_ApartmentNum"

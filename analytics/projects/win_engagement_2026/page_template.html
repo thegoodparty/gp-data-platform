@@ -1,0 +1,576 @@
+<title>Win engagement 2026</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap">
+<style>
+/* One reading column. Each section: question, one-sentence answer, one chart. Detail lives in the appendix. */
+:root {
+  --bg: #ffffff; --fg: #0B1529; --muted: #5b6577; --rule: #e3e7ef; --grid: #eef1f6;
+  --blue: #0048C2; --grey: #b4bccb; --sky: #A4C2F5; --teal: #0f8b8d; --orange: #e07b24; --chip: #eef3fd;
+  --hi: rgba(0, 72, 194, .16); --lo: rgba(224, 123, 36, .16);
+  --font: "Outfit", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0B1529; --fg: #eef2f8; --muted: #9aa6bb; --rule: #223150; --grid: #1a2742;
+  --blue: #6f9ef0; --grey: #55627c; --sky: #A4C2F5; --teal: #3cc3c5; --orange: #f2a15c; --chip: #15233f;
+  --hi: rgba(111, 158, 240, .22); --lo: rgba(242, 161, 92, .22); color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0B1529; --fg: #eef2f8; --muted: #9aa6bb; --rule: #223150; --grid: #1a2742;
+  --blue: #6f9ef0; --grey: #55627c; --sky: #A4C2F5; --teal: #3cc3c5; --orange: #f2a15c; --chip: #15233f;
+  --hi: rgba(111, 158, 240, .22); --lo: rgba(242, 161, 92, .22); color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 15px; line-height: 1.5; margin: 0; }
+.wrap { max-width: 980px; margin: 0 auto; padding-block: 28px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+h1 { font-size: 1.9rem; font-weight: 600; margin: 0 0 4px; text-wrap: balance; }
+h2 { font-size: 1.3rem; font-weight: 600; margin: 0 0 4px; text-wrap: balance; }
+h3 { font-size: 1rem; font-weight: 600; margin: 20px 0 2px; }
+p { margin: 0 0 10px; }
+.muted { color: var(--muted); }
+.draft { display: inline-block; background: var(--chip); color: var(--blue); font-size: .78rem; font-weight: 600;
+  letter-spacing: .04em; text-transform: uppercase; padding: 3px 8px; border-radius: 4px; margin-bottom: 10px; }
+.meta { font-size: .85rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0 4px; }
+section { border-top: 1px solid var(--rule); padding-top: 26px; margin-top: 30px; }
+.for { font-size: .85rem; color: var(--muted); margin-bottom: 10px; }
+.for b { color: var(--fg); font-weight: 500; }
+.answer { font-size: 1.02rem; font-weight: 500; margin-bottom: 14px; }
+.sub { font-size: .82rem; color: var(--muted); margin: 0 0 6px; min-height: 2.5em; }
+.sum { margin-top: 18px; font-size: .9rem; }
+.sum .row { display: grid; grid-template-columns: 24px minmax(150px, 1fr) 1.5fr 1.3fr; gap: 6px 18px; padding: 12px 0; border-top: 1px solid var(--rule); }
+.sum .hd { font-size: .75rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); padding: 0 0 6px; border-top: 0; }
+.sum .n { color: var(--blue); font-weight: 600; }
+.sum .q a { font-weight: 600; color: var(--fg); text-decoration: none; border-bottom: 1px solid var(--rule); }
+.sum .q a:hover, .sum .q a:focus-visible { color: var(--blue); }
+.sum .lab { display: none; }
+.sum .who { font-weight: 600; }
+@media (max-width: 720px) {
+  .sum .row { grid-template-columns: 24px 1fr; }
+  .sum .row > :nth-child(n+3) { grid-column: 2; }
+  .sum .hd { display: none; }
+  .sum .lab { display: block; font-size: .72rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
+}
+nav.toc { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: .85rem; margin-top: 14px; }
+nav.toc a { color: var(--muted); text-decoration: none; border-bottom: 1px solid var(--rule); }
+nav.toc a:hover, nav.toc a:focus-visible { color: var(--blue); }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px 32px; }
+.grid2 > div { min-width: 0; }
+.chart { width: 100%; min-width: 0; }
+.chart svg { display: block; overflow: visible; }
+.chart text { font-family: var(--font); font-size: 11px; fill: var(--fg); }
+.chart .ax { fill: var(--muted); }
+.chart .grp { font-weight: 600; }
+.key { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11px; color: var(--muted); margin: 2px 0 4px; }
+.key i { display: inline-block; width: 14px; height: 3px; margin-right: 5px; vertical-align: 3px; }
+.key i.sq { width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; }
+.tw { overflow-x: auto; margin: 6px 0 4px; }
+table { border-collapse: collapse; font-size: .84rem; font-variant-numeric: tabular-nums; min-width: 100%; }
+th, td { text-align: right; padding: 5px 10px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th { font-weight: 500; color: var(--muted); }
+th:first-child, td:first-child { text-align: left; }
+td.wrapc { white-space: normal; min-width: 220px; text-align: left; }
+td.hi { background: var(--hi); } td.lo { background: var(--lo); }
+.rec { font-size: .92rem; border-left: 3px solid var(--blue); padding: 4px 0 4px 12px; margin: 4px 0 16px; }
+.rec .lbl { font-weight: 600; }
+.flag { font-size: .84rem; border-left: 2px solid var(--sky); padding: 2px 0 2px 10px; margin: 10px 0; }
+details { margin-top: 10px; } summary { cursor: pointer; color: var(--blue); font-size: .88rem; }
+a { color: var(--blue); }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+</style>
+
+<div class="wrap">
+  <h1>Win engagement 2026</h1>
+  <p class="muted">How candidates found, started, used and came back to Win in the 2026 cycle.</p>
+  <div class="meta"><span>Data through <b>Nov 16, 2026</b></span><span>Races Jan 1 to Nov 3, 2026</span><span>Staff and demo accounts excluded</span></div>
+
+  <div class="sum" id="sum" role="table" aria-label="Questions, findings and suggestions"></div>
+  <nav class="toc" aria-label="Sections">
+    <a href="#pop">Who we look at</a><a href="#signup">1 Signups</a><a href="#start">2 Getting started</a><a href="#features">3 Tools</a><a href="#power">4 Most active users</a><a href="#back">5 Coming back</a><a href="#outreach">6 Targeting</a><a href="#appendix">Appendix</a>
+  </nav>
+
+  <section id="pop">
+    <h2>Who we look at</h2>
+    <p class="sub">Win users with a race in 2026 (and fall 2025 races for reference). <b>Reached voters</b> = sent outreach (text, call, door knocking, phone banking) in the election's year, by election day. <b>Power users</b> = the most active people who reached voters: about the top 15% by days of campaign work in Win, such as sending outreach, building a voter audience or drafting a message. Just viewing the dashboard or onboarding doesn't count. 103 of 580 in 2026 (18%, because people tied at the bar all count).</p>
+    <div class="tw"><table id="t-pop"></table></div>
+  </section>
+
+  <section id="signup">
+    <h2>When do candidates sign up?</h2>
+    <div class="for">For <b>go-to-market and sales</b></div>
+    <p class="answer" id="k-signup"></p>
+    <p class="rec" id="r-signup"></p>
+    <div class="grid2">
+      <div><h3>Of people who reached voters, how many weeks before their election they signed up</h3>
+        <p class="sub">2026 races. Each bar: share of that group's people who reached voters | people; each color adds to 100%. Weeks count to the candidate's own election. Sales-created = accounts our team made.</p>
+        <div class="chart" id="c-leadwk"></div></div>
+      <div><h3>Of people who signed up in each window, share who reached voters</h3>
+        <p class="sub">Same 2026 races and windows. Each bar: share | people who reached voters, out of everyone who signed up in that window (hover for the count).</p>
+        <div class="chart" id="c-leadrate"></div></div>
+    </div>
+    <div class="grid2">
+      <div><h3>Signups per month, 2026</h3>
+        <p class="sub">New accounts each month, by how they came in.</p>
+        <div class="chart" id="c-signups"></div></div>
+      <div><h3>Share who reached voters within 30 days of signing up</h3>
+        <p class="sub">By signup month and how they came in, 2026. October counts people who have had 30 days so far; with the elections over, little more is expected. Sales-created months are small (58 to 428 accounts), so expect them to jump around.</p>
+        <div class="chart" id="c-act30"></div></div>
+    </div>
+  </section>
+
+  <section id="start">
+    <h2>Where do people get stuck before their first outreach?</h2>
+    <div class="for">For <b>product</b></div>
+    <p class="answer" id="k-start"></p>
+    <p class="rec" id="r-start"></p>
+    <h3>From signup to first outreach, 2026</h3>
+    <p class="sub">The 9,983 people who signed up from May 26, 2025 (when onboarding started being recorded) with a 2026 race; earlier signups are left out, so this shows 526 of the 580 who reached voters. Each bar: share of signups | people | median time from the step before. The 1,420 who never started onboarding are split about evenly: 734 self-signups and 686 sales-created accounts.</p>
+    <div class="chart" id="c-funnel"></div>
+    <div class="grid2">
+      <div><h3>How far people got, if they never reached voters</h3>
+        <p class="sub" id="s-stall"></p>
+        <div class="chart" id="c-stall"></div></div>
+      <div><h3>Did people use a channel once it was available?</h3>
+        <p class="sub" id="s-chan"></p>
+        <div class="chart" id="c-chan"></div></div>
+    </div>
+  </section>
+
+  <section id="features">
+    <h2>Which tools do people use and come back to?</h2>
+    <div class="for">For <b>product and pricing</b></div>
+    <p class="answer" id="k-feat"></p>
+    <p class="rec" id="r-feat"></p>
+    <div class="grid2">
+      <div><h3>Share of people who reached voters using each tool</h3>
+        <p class="sub">2026, before their election. "Steps toward a send" are part of creating a campaign, so their use mostly follows the product flow.</p>
+        <div class="chart" id="c-feat"></div></div>
+      <div><h3>Of those who used it, share who used it on 2+ days</h3>
+        <p class="sub">Same people and tools. Faded where fewer than 100 people used the tool: too few to compare.</p>
+        <div class="chart" id="c-rep"></div></div>
+    </div>
+  </section>
+
+  <section id="power">
+    <h2>Who are the most active users?</h2>
+    <div class="for">For <b>product and sales</b></div>
+    <p class="flag"><b>Power users</b> are the top 15% of people who reached voters, ranked by days of campaign work in Win, such as sending outreach, building a voter audience or drafting a message (just viewing the dashboard or onboarding doesn't count), before their election (13 or more days in 2026). 103 of 580 people in 2026; people tied at the bar all count, so it's 18%.</p>
+    <p class="answer" id="k-power"></p>
+    <p class="rec" id="r-power"></p>
+    <h3>How likely each group is to be a power user, against the average</h3>
+    <p class="sub" id="s-ratio"></p>
+    <div class="chart" id="c-ratio"></div>
+    <h3>Did a CaS call before the first send go with being a power user?</h3>
+    <p class="sub" id="s-cas"></p>
+    <div class="chart" id="c-cas"></div>
+    <h3>What power users use, against other activated users (who reached voters)</h3>
+    <p class="sub">Share using each tool, 2026. "Times as likely" is shaded: darker = power users use it more often than other activated users. "Too few" where under 30 people in a group used it. Using many tools is part of being a power user, so this shows what they do, not why.</p>
+    <div class="tw"><table id="t-puprof"></table></div>
+  </section>
+
+  <section id="back">
+    <h2>When do people use Win, and what brings them back?</h2>
+    <div class="for">For <b>go-to-market and lifecycle messaging</b></div>
+    <p class="answer" id="k-back"></p>
+    <p class="rec" id="r-back"></p>
+    <h3>Share active each week before the election</h3>
+    <p class="sub">Active = any visit to Win that week, dashboard views included. Of people already signed up by that week. Weeks after the 2026 election stay blank until December, when they're complete.</p>
+    <div class="chart" id="c-weekly"></div>
+    <div class="grid2">
+      <div><h3>By the state's early voting, 2026</h3>
+        <p class="sub">People who reached voters, share active each week. The 3 states with neither have 7 such people and are left out.</p>
+        <div class="chart" id="c-ev"></div></div>
+      <div><h3>How far ahead texts and robocalls are scheduled</h3>
+        <p class="sub">Days from creating a campaign to its send day, 2026 campaigns that went out.</p>
+        <div class="chart" id="c-sched"></div></div>
+    </div>
+    <div class="grid2">
+      <div><h3>Where returns go first, after the dashboard</h3>
+        <p class="sub" id="s-retgo"></p>
+        <div class="chart" id="c-retgo"></div></div>
+      <div><h3>Returns per 100 people a week, by weeks before the election</h3>
+        <p class="sub">2026, people who reached voters and had signed up by that week. A return needs 14 quiet days before it, so the busiest weeks can't show many.</p>
+        <div class="chart" id="c-retpace"></div></div>
+    </div>
+    <h3>What returns after 14+ days away included, within 3 days</h3>
+    <p class="sub" id="s-retact"></p>
+    <div class="chart" id="c-retact"></div>
+  </section>
+
+  <section id="outreach">
+    <h2>Does targeting change how voters respond?</h2>
+    <div class="for">For <b>product</b></div>
+    <p class="answer" id="k-out"></p>
+    <p class="rec" id="r-out"></p>
+    <p class="sub">Targeted = the audience used at least one demographic filter (age, gender, homeowner, education, children, marital status, ethnicity, veteran, business owner, income, language). Compared within the same <span id="n-within"></span> candidates who sent both kinds of text since Jul 22.</p>
+    <div class="grid2">
+      <div><h3>Real replies per 1,000 texts</h3>
+        <p class="sub">Replies that aren't STOP messages.</p>
+        <div class="chart" id="c-rep1000"></div></div>
+      <div><h3>Opt-outs per 1,000 texts</h3>
+        <p class="sub">STOP replies and opt-outs recorded by the texting vendor.</p>
+        <div class="chart" id="c-opt1000"></div></div>
+    </div>
+    <h3>All texts since Jul 22, every sender</h3>
+    <p class="sub">Every sender pooled, so a few large senders weigh more; the charts above compare the same senders on both sides.</p>
+    <div class="tw"><table id="t-pooled"></table></div>
+  </section>
+
+  <section id="appendix">
+    <h2>Appendix</h2>
+    <p class="sub">Method, caveats and the detail behind each section.</p>
+    <details><summary>Assumptions</summary><div class="tw"><table id="t-assume"></table></div></details>
+    <details><summary>Signup timing by group and year</summary><div class="tw"><table id="t-lead"></table></div></details>
+    <details><summary>Funnel by signup channel and year</summary><div class="tw"><table id="t-funnelch"></table></div></details>
+    <details><summary>Tools by job, 2026 against 2025</summary><div class="tw"><table id="t-jobs"></table></div></details>
+    <details><summary>Team contact before the first send (HubSpot estimate)</summary><div class="tw"><table id="t-cas"></table></div></details>
+    <details><summary>What comes before a return after a quiet spell</summary><p class="sub" id="s-ret"></p><div class="tw"><table id="t-ret"></table></div></details>
+    <details><summary>Targeting: each sender compared with themselves</summary><p class="sub" id="s-within"></p><div class="chart" id="c-within"></div></details>
+    <details><summary>Purposes by channel, 2026</summary><div class="tw"><table id="t-purpose"></table></div></details>
+    <details><summary>Campaigns per person who reached voters</summary><div class="tw"><table id="t-sps"></table></div></details>
+    <h3>Not in this report</h3>
+    <p class="sub">Whether Win or a CaS call helped anyone win; whether sales touches caused Pro upgrades; winner profiles; network effects.</p>
+    <p class="muted" id="run"></p>
+  </section>
+</div>
+
+<script>
+const D = /*DATA*/;
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const P = v => (v * 100).toFixed(Math.abs(v) < 0.1 && v !== 0 ? 1 : 0).replace(/\.0$/, "") + "%";
+const N = v => Math.round(v).toLocaleString("en-US");
+const R = (k, n) => n < 30 ? `${N(k)} of ${N(n)}` : `${P(k / n)} (${N(k)})`;
+const X = v => v.toFixed(2).replace(/0$/, "") + "x";
+const NS = "http://www.w3.org/2000/svg";
+const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const mon = s => MON[+s.slice(5, 7) - 1], monY = s => mon(s) + " " + s.slice(0, 4);
+function el(tag, attrs, parent, text) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text !== undefined) e.textContent = text;
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function tip(e, t) { el("title", {}, e, t); return e; }
+// Legend: items are [color, label, kind] with kind "line", "dash" or "sq".
+function key(host, items) {
+  const k = document.createElement("div"); k.className = "key";
+  k.innerHTML = items.map(([c, t, kind]) => `<span><i class="${kind === "sq" ? "sq" : ""}" style="${kind === "dash" ? `background:repeating-linear-gradient(90deg,${c} 0 4px,transparent 4px 7px)` : `background:${c}`}"></i>${t}</span>`).join("");
+  host.appendChild(k);
+}
+// Every chart redraws at its box's real width, so 11px text never scales.
+const CHARTS = [];
+function chart(id, H, draw, keys) {
+  const host = document.getElementById(id);
+  const render = () => {
+    host.innerHTML = ""; if (keys) key(host, keys());
+    const W = Math.max(280, host.clientWidth), h = typeof H === "function" ? H(W) : H;
+    const svg = el("svg", { width: W, height: h, viewBox: `0 0 ${W} ${h}`, role: "img" }, host);
+    draw(svg, W, h);
+  };
+  CHARTS.push({ host, render, w: 0 });
+}
+function table(id, head, rows) {
+  document.getElementById(id).innerHTML = "<tr>" + head.map(h => `<th>${h}</th>`).join("") + "</tr>" +
+    rows.map(r => "<tr>" + r.map((c, i) => {
+      const [v, cls, heat] = Array.isArray(c) ? c : [c, "", null];
+      const st = heat != null ? ` style="background:color-mix(in srgb, var(--blue) ${Math.round(Math.min(1, heat) * 45)}%, transparent)"` : "";
+      return `<td class="${cls}${i === r.length - 1 && String(v).length > 60 ? " wrapc" : ""}"${st}>${v}</td>`;
+    }).join("") + "</tr>").join("");
+}
+function gridY(svg, y, L, R, ticks, fmt) {
+  ticks.forEach(t => {
+    el("line", { x1: L, x2: R, y1: y(t), y2: y(t), stroke: css("--grid") }, svg);
+    el("text", { x: L - 6, y: y(t) + 4, "text-anchor": "end", class: "ax" }, svg, fmt(t));
+  });
+}
+// Horizontal bars from one left edge. rows: {label, a, la, b?, lb?, fade?, group?}
+function hbars(id, rows, o = {}) {
+  const two = rows.some(r => r.b !== undefined), bh = 11, rowH = two ? 2 * bh + 12 : bh + 11, gh = 20;
+  const groups = rows.filter((r, i) => r.group && (i === 0 || rows[i - 1].group !== r.group)).length;
+  chart(id, rows.length * rowH + groups * gh + 6, (svg, W) => {
+    const lw = Math.min(o.labelW || 150, W * 0.42), max = o.max || Math.max(...rows.flatMap(r => [r.a, r.b ?? 0]));
+    const x = v => lw + (W - lw - (o.valW || 80)) * v / max;
+    let y = 4;
+    rows.forEach((r, i) => {
+      if (r.group && (i === 0 || rows[i - 1].group !== r.group)) { el("text", { x: 0, y: y + 12, class: "grp" }, svg, r.group); y += gh; }
+      const op = r.fade ? 0.45 : 1;
+      el("text", { x: lw - 8, y: y + (two ? bh + 4 : bh - 1), "text-anchor": "end" }, svg, r.label);
+      if (o.track) el("rect", { x: lw, y, width: x(max) - lw, height: bh, fill: css("--grid"), rx: 1.5 }, svg);
+      tip(el("rect", { x: lw, y, width: Math.max(1, x(r.a) - lw), height: bh, fill: r.color || css("--blue"), rx: 1.5, opacity: op }, svg), r.ta || r.la);
+      el("text", { x: x(r.a) + 4, y: y + bh - 1 }, svg, r.la);
+      if (r.b !== undefined) {
+        tip(el("rect", { x: lw, y: y + bh + 2, width: Math.max(1, x(r.b) - lw), height: bh, fill: css("--grey"), rx: 1.5, opacity: r.fadeb ? 0.45 : 1 }, svg), r.tb || r.lb);
+        el("text", { x: x(r.b) + 4, y: y + 2 * bh + 1, class: "ax" }, svg, r.lb);
+      }
+      y += rowH;
+    });
+  }, o.keys);
+}
+// Lines over an ordered x, with a legend above. series: {name, c, dash?, pts:[{x, y|null, tip, hollow}]}
+function lines(id, series, o) {
+  chart(id, o.H || 250, (svg, W, H) => {
+    const L = 40, Rr = o.endW ?? 60, T = 12, B = 34;
+    const xs = o.xs, x = v => L + (W - L - Rr) * (xs[0] - v) / (xs[0] - xs[xs.length - 1]);
+    const y = v => T + (H - T - B) * (1 - v / o.ymax);
+    gridY(svg, y, L, W - Rr, o.yticks, P);
+    if (o.mark !== undefined) {
+      el("line", { x1: x(o.mark), x2: x(o.mark), y1: T, y2: H - B, stroke: css("--rule"), "stroke-dasharray": "3 3" }, svg);
+      el("text", { x: x(o.mark) + 4, y: T + 8, class: "ax" }, svg, o.markLabel);
+    }
+    o.xticks.forEach(v => el("text", { x: x(v), y: H - B + 16, "text-anchor": "middle", class: "ax" }, svg, o.xfmt ? o.xfmt(v) : v));
+    el("text", { x: (L + W - Rr) / 2, y: H - 2, "text-anchor": "middle", class: "ax" }, svg, o.xTitle);
+    series.forEach(s => {
+      const pts = s.pts.filter(p => p.y !== null && p.y !== undefined);
+      const solid = pts.filter(p => !p.hollow);
+      el("polyline", { points: solid.map(p => `${x(p.x)},${y(p.y)}`).join(" "), fill: "none", stroke: s.c, "stroke-width": 2, "stroke-dasharray": s.dash ? "5 3" : "" }, svg);
+      const hol = pts.filter((p, i) => p.hollow || (pts[i + 1] && pts[i + 1].hollow));
+      if (hol.length > 1) el("polyline", { points: hol.map(p => `${x(p.x)},${y(p.y)}`).join(" "), fill: "none", stroke: s.c, "stroke-width": 1.5, "stroke-dasharray": "4 3" }, svg);
+      pts.forEach(p => tip(el("circle", { cx: x(p.x), cy: y(p.y), r: 3, fill: p.hollow ? css("--bg") : s.c, stroke: s.c, "stroke-width": 1.5 }, svg), p.tip));
+      const last = pts[pts.length - 1];
+      if (last && o.endLabels) el("text", { x: x(last.x) + 6, y: y(last.y) + 4, fill: s.c }, svg, P(last.y));
+    });
+  }, series.length > 1 ? () => series.map(s => [s.c, s.name, s.dash ? "dash" : "line"]) : null);
+}
+// Vertical grouped bars (two series, categorical colors).
+function vbars(id, cats, series, o) {
+  chart(id, 210, (svg, W, H) => {
+    const L = 44, T = 18, B = 30, max = o.max, cw = (W - L) / cats.length, bw = Math.min(14, cw / 2.6);
+    const y = v => T + (H - B - T) * (1 - v / max);
+    gridY(svg, y, L, W, o.yticks, N);
+    cats.forEach((c, i) => {
+      const cx = L + cw * i + cw / 2;
+      series.forEach((s, j) => {
+        const v = s.v[i], bx = cx + (j === 0 ? -bw - 1 : 1);
+        tip(el("rect", { x: bx, y: y(v), width: bw, height: H - B - y(v), fill: s.c, rx: 1.5 }, svg), `${s.name}, ${monY(c)}: ${N(v)}`);
+      });
+      el("text", { x: cx, y: H - B + 15, "text-anchor": "middle", class: "ax" }, svg, mon(c));
+    });
+    el("text", { x: L, y: 10, class: "ax" }, svg, "Signups");
+  }, () => series.map(s => [s.c, s.name, "sq"]));
+}
+// Ratio dot plot against 1.0, grouped by trait, each dot labelled; faint line per row.
+function ratioDots(id, rows) {
+  const rowH = 22, gapT = 18;
+  const traits = [...new Set(rows.map(r => r.trait))];
+  const H = rows.length * rowH + traits.length * gapT + 30;
+  chart(id, H, (svg, W) => {
+    const lw = Math.min(190, W * 0.38), vr = 110, lo = 0, hi = 2;
+    const x = v => lw + (W - lw - vr) * (Math.min(hi, Math.max(lo, v)) - lo) / (hi - lo);
+    [0.5, 1, 1.5, 2].forEach(t => {
+      el("line", { x1: x(t), x2: x(t), y1: 16, y2: H - 4, stroke: t === 1 ? css("--muted") : css("--grid"), "stroke-dasharray": t === 1 ? "3 3" : "" }, svg);
+      el("text", { x: x(t), y: 10, "text-anchor": "middle", class: "ax" }, svg, t === 1 ? "average (1x)" : t + "x");
+    });
+    let yy = 26;
+    traits.forEach(t => {
+      el("text", { x: 0, y: yy + 6, class: "grp" }, svg, t);
+      yy += gapT;
+      rows.filter(r => r.trait === t).forEach(r => {
+        el("line", { x1: lw, x2: W - vr + 4, y1: yy, y2: yy, stroke: css("--grid") }, svg);
+        el("text", { x: lw - 8, y: yy + 4, "text-anchor": "end" }, svg, r.group);
+        const op = r.n < 100 ? 0.4 : 1;
+        tip(el("circle", { cx: x(r.ratio), cy: yy, r: 5, fill: css("--blue"), opacity: op }, svg), `${r.group}: ${N(r.power_users)} of ${N(r.n)} are power users`);
+        el("text", { x: W - vr + 10, y: yy + 4, class: r.n < 100 ? "ax" : "" }, svg, `${X(r.ratio)} (${N(r.power_users)} of ${N(r.n)})`);
+        yy += rowH;
+      });
+    });
+  });
+}
+// Each sender's targeted-minus-untargeted reply rate, with median and its interval (appendix).
+function strip(id, diffs, med, ci) {
+  chart(id, 120, (svg, W) => {
+    const L = 20, Rr = 20, lo = -0.03, hi = 0.03, x = v => L + (W - L - Rr) * (Math.min(hi, Math.max(lo, v)) - lo) / (hi - lo);
+    [-0.02, -0.01, 0, 0.01, 0.02].forEach(t => {
+      el("line", { x1: x(t), x2: x(t), y1: 12, y2: 80, stroke: t === 0 ? css("--muted") : css("--grid"), "stroke-dasharray": t === 0 ? "3 3" : "" }, svg);
+      el("text", { x: x(t), y: 96, "text-anchor": "middle", class: "ax" }, svg, (t > 0 ? "+" : "") + (t * 100).toFixed(0) + " pts");
+    });
+    diffs.forEach((d, i) => tip(el("circle", { cx: x(d), cy: 30 + ((i * 37) % 21), r: 3, fill: css("--grey"), opacity: 0.8 }, svg), `${(d * 100).toFixed(2)} pts`));
+    el("rect", { x: x(ci[0]), y: 60, width: Math.max(2, x(ci[1]) - x(ci[0])), height: 8, fill: css("--sky"), rx: 2 }, svg);
+    el("circle", { cx: x(med), cy: 64, r: 5, fill: css("--blue") }, svg);
+  }, () => [[css("--grey"), "one sender", "sq"], [css("--blue"), "median, with 95% interval", "sq"]]);
+}
+
+function build() {
+  const pop = D.population, p26 = pop.find(r => r.cycle === 2026);
+  table("t-pop", ["Races in", "Users with a race", "Reached voters", "Power users"],
+    pop.slice().reverse().map(r => [r.cycle === 2026 ? "2026" : "Fall 2025", N(r.users), R(r.activated, r.users), N(r.power_users)]));
+
+  // 1. Signups
+  const S = D.signups;
+  vbars("c-signups", S.map(r => r.month), [
+    { name: "self-signup", c: css("--blue"), v: S.map(r => r["self-signup"]) },
+    { name: "sales-created", c: css("--grey"), v: S.map(r => r["sales-created"]) }], { max: Math.ceil(Math.max(...S.map(r => r["self-signup"])) / 500) * 500, yticks: [500, 1000, 1500] });
+  lines("c-act30", [["self-signup", "Self-signup", css("--blue")], ["sales-created", "Sales-created", css("--grey")]].map(([c, nm, col]) => ({ name: nm, c: col,
+      pts: S.map((r, i) => ({ x: S.length - 1 - i, y: r["old|" + c] ? r["act|" + c] / r["old|" + c] : null,
+      tip: `${nm}, ${monY(r.month)}: ${N(r["act|" + c])} of ${N(r["old|" + c])} reached voters within 30 days` })) })),
+    { xs: [S.length - 1, 0], ymax: 0.3, yticks: [0.1, 0.2, 0.3], xticks: S.map((r, i) => S.length - 1 - i), xfmt: v => mon(S[S.length - 1 - v].month), xTitle: "Signup month", endW: 20, H: 210 });
+  const lc = c => D.lead_channel.find(r => r.channel === c && r.cut === "activated");
+  const best = S.reduce((m, r) => (!r.filling && r.act / r.old_enough > m.act / m.old_enough) ? r : m, S[0]);
+  const fs = D.funnel["2026|sales-created"], ff = D.funnel["2026|self-signup"];
+  const LW = D.lead_weeks, BINS = ["52+", "39-51", "26-38", "16-25", "12-15", "8-11", "4-7", "0-3"];
+  const lw = (b, c) => LW.find(r => r.bin === b && r.channel === c), tot = (c, k) => LW.filter(r => r.channel === c).reduce((t, r) => t + r[k], 0);
+  const sum = (bs, c, k) => bs.reduce((t, b) => t + lw(b, c)[k], 0);
+  const wkTip = (b, c) => `${c === "self-signup" ? "Self-signups" : "Sales-created"}, ${b} weeks out: ${N(lw(b, c).sent)} reached voters, of ${N(lw(b, c).signups)} who signed up then (${P(lw(b, c).sent / lw(b, c).signups)})`;
+  hbars("c-leadwk", BINS.map(b => ({ label: b === "52+" ? "52+ weeks" : `${b} weeks`, a: lw(b, "self-signup").sent / tot("self-signup", "sent"), la: `${P(lw(b, "self-signup").sent / tot("self-signup", "sent"))} | ${N(lw(b, "self-signup").sent)}`, ta: wkTip(b, "self-signup"),
+    b: lw(b, "sales-created").sent / tot("sales-created", "sent"), lb: `${P(lw(b, "sales-created").sent / tot("sales-created", "sent"))} | ${N(lw(b, "sales-created").sent)}`, tb: wkTip(b, "sales-created") })),
+    { labelW: 90, valW: 90, keys: () => [[css("--blue"), `Self-signups (${N(tot("self-signup", "sent"))})`, "sq"], [css("--grey"), `Sales-created (${N(tot("sales-created", "sent"))})`, "sq"]] });
+  hbars("c-leadrate", BINS.map(b => ({ label: b === "52+" ? "52+ weeks" : `${b} weeks`, a: lw(b, "self-signup").sent / lw(b, "self-signup").signups, la: `${P(lw(b, "self-signup").sent / lw(b, "self-signup").signups)} | ${N(lw(b, "self-signup").sent)}`, ta: wkTip(b, "self-signup"),
+    b: lw(b, "sales-created").sent / lw(b, "sales-created").signups, lb: `${P(lw(b, "sales-created").sent / lw(b, "sales-created").signups)} | ${N(lw(b, "sales-created").sent)}`, tb: wkTip(b, "sales-created"), fadeb: lw(b, "sales-created").signups < 100 })),
+    { labelW: 90, valW: 90, keys: () => [[css("--blue"), "Self-signups", "sq"], [css("--grey"), "Sales-created", "sq"]] });
+  const near = ["4-7", "8-11"], far = ["39-51", "52+"], nov = (n, c) => D.lead_nov.find(r => r.november === n && r.channel === c).median_weeks;
+  const nearRate = sum(near, "self-signup", "sent") / sum(near, "self-signup", "signups"), farRate = sum(far, "self-signup", "sent") / sum(far, "self-signup", "signups");
+  const farShare = sum(far, "self-signup", "signups") / tot("self-signup", "signups");
+  const maxSelf = Math.max(...BINS.map(b => lw(b, "self-signup").sent / tot("self-signup", "sent"))), sales811 = lw("8-11", "sales-created").sent / tot("sales-created", "sent");
+  document.getElementById("k-signup").innerHTML = `Self-signups who went on to reach voters came in at every point in the cycle: no window holds more than ${P(maxSelf)} of them. Sales-created accounts cluster 8 to 11 weeks out (${P(sales811)}). What timing changes is how likely a signup is to act: of self-signups 4 to 11 weeks before their election, <b>${P(nearRate)}</b> reached voters; of those signing up 39 or more weeks out, <b>${P(farRate)}</b>, and they are ${P(farShare)} of all self-signups. Self-signups for November races came earlier (median ${nov(true, "self-signup")} weeks out) than for races earlier in the year (${nov(false, "self-signup")} weeks).`;
+  document.getElementById("r-signup").innerHTML = `<span class="lbl">What to do:</span> go-to-market could time self-signup pushes to each race's own calendar, not the calendar year. Self-signups 1 to 3 months from their election are the likeliest to act; accounts sales creates act at about the same rate whenever they're made. The many who sign up 9 months or more ahead rarely act, yet they are still ${P(sum(far, "self-signup", "sent") / tot("self-signup", "sent"))} of self-signups who reached voters. So the case is for adding a push close to each election, not for moving effort off early signups, which need a nudge as their election nears. This shows where people who acted came from; we haven't tested what a push at a given time does. Signups by month: <a href="https://app.sigmacomputing.com/good-party/workbook/GP-User-Journey-or-Pirate-Metrics-n49wZZDj101PyBYsywKsw?:nodeId=rKj6x_bF0X">Acquisition page of the GP User Journey dashboard</a>.`;
+
+  // 2. Getting started
+  const F = D.funnel["2026|all"];
+  const stepName = { "signed up": "Signed up", "logged in at least once": "Logged in", "started onboarding": "Started onboarding", "finished onboarding": "Finished onboarding", "sent voter outreach": "Reached voters" };
+  hbars("c-funnel", F.steps.map((s, i) => ({ label: stepName[s.step], a: s.share, la: `${P(s.share)} | ${N(s.n)}` + (i ? ` | ${s.median_days_from_prev ? s.median_days_from_prev + " days" : "same day"}` : "") })),
+    { max: 1, labelW: 140, valW: 150, track: true });
+  const fin = F.steps[3], sent = F.steps[4];
+  document.getElementById("k-start").innerHTML = `People finish onboarding, then stop. ${R(fin.n, F.base)} of 2026 signups finished onboarding but only ${R(sent.n, F.base)} went on to reach voters. Of those who finished onboarding and never sent, ${R(D.stall.rows[0].n, D.stall.n)} didn't use any other Win tool afterwards.`;
+  document.getElementById("r-start").innerHTML = `<span class="lbl">What to do:</span> product could focus on the first send after onboarding, not onboarding itself. Most people finish onboarding; the drop is between there and a first send, and most who stall never open another tool. The end of onboarding is where a clear next step toward a first send belongs. Step by step against last year: <a href="https://app.sigmacomputing.com/good-party/workbook/GP-User-Journey-or-Pirate-Metrics-n49wZZDj101PyBYsywKsw?:nodeId=RV5-Nwhtz2">Activation page of the GP User Journey dashboard</a>.`;
+  document.getElementById("s-stall").textContent = `2026 people who finished onboarding and never reached voters (${N(D.stall.n)}), counted once at the furthest step they got to.`;
+  hbars("c-stall", D.stall.rows.map(r => ({ label: r.step, a: r.n / D.stall.n, la: R(r.n, D.stall.n) })), { labelW: 220, valW: 80, max: 1, track: true });
+  const CH = { texting: "Texting", phone_banking: "Phone banking", robocall: "Robocalls", door_knocking: "Door knocking", social: "Social posts" };
+  document.getElementById("s-chan").textContent = `Of 2026 people who reached voters, the share who used each channel. Door knocking arrived Sep 9 and social posts Aug 28, so for those two we count only people whose election was at least 2 weeks later (458 of 580).`;
+  hbars("c-chan", D.channels.map(r => ({ label: CH[r.channel] || r.channel, a: r.used / r.eligible, la: `${P(r.used / r.eligible)} (${N(r.used)} of ${N(r.eligible)})` })), { labelW: 110, valW: 120, max: 1, track: true });
+
+  // 3. Tools
+  const FL = { content_builder: "Content builder (retired Sep 10)", voter_file_download: "Voter file download", segment_build: "Audience building", ai_help: "AI help",
+    website_publish: "Website publishing", outreach_prep: "Outreach drafting", plan_task: "Campaign plan tasks", story_rewrite: "Story rewrite",
+    opponent_lookup: "Opponent research", team_assign: "Team assignments", team_invite: "Team invites", contact_tracking: "Contact tracking" };
+  const grp = r => r.send_step ? "Steps toward a send" : "Other tools";
+  const fa = D.features.activated.slice().sort((a, b) => (b.send_step - a.send_step) || (b.used - a.used));
+  hbars("c-feat", fa.map(r => ({ group: grp(r), label: FL[r.feature], a: r.used, la: R(r.users, r.eligible) })), { labelW: 190, valW: 80, max: 1 });
+  hbars("c-rep", fa.map(r => ({ group: grp(r), label: FL[r.feature], a: r.users < 30 ? 0 : r.repeat_2plus_days, la: R(r.repeat_users, r.users), fade: r.users < 100 })), { labelW: 190, valW: 80, max: 1 });
+  const other = fa.filter(r => !r.send_step && r.users >= 100 && r.feature !== "content_builder").sort((a, b) => b.used - a.used);
+  const draft = fa.find(r => r.feature === "outreach_prep");
+  const nm = f => ({ website_publish: "website publishing", ai_help: "AI help", plan_task: "campaign plan tasks", opponent_lookup: "opponent research" })[f] || FL[f];
+  const pfx = f => { const a = D.pu_features["power users"].find(r => r.feature === f), b = D.pu_features["other activated"].find(r => r.feature === f);
+    return { name: nm(f), m: (a.users / a.eligible) / (b.users / b.eligible) }; };
+  document.getElementById("k-feat").innerHTML = `Besides the steps of building a campaign, the most used tools still in the product are ${nm(other[0].feature)}, used by ${P(other[0].users / other[0].eligible)}, and ${nm(other[1].feature)}, ${P(other[1].users / other[1].eligible)}. Of tools with 100+ users, outreach drafting is the one people come back to most (${P(draft.repeat_users / draft.users)} used it on 2+ days), but it is a step toward a send, so that mostly follows how campaigns are built. Power users stand out on ${pfx("ai_help").name} (${X(pfx("ai_help").m)} as likely as other activated users) and ${pfx("opponent_lookup").name} (${X(pfx("opponent_lookup").m)}).`;
+  document.getElementById("r-feat").innerHTML = `<span class="lbl">What to do:</span> product could test promoting AI help earlier, since our most active users lean on it. Opponent research is mostly a one-time look (${P(D.features.activated.find(r => r.feature === "opponent_lookup").repeat_2plus_days)} of its users came back to it) and needs Pro, so promoting it is really a Pro upsell test. Using many tools is part of being a power user, so this shows where the most active users go, not that these tools make people active.`;
+
+  // 4. Most active users
+  const pa = D.pu_answer, rr = D.pu_ratio["2026"].rows, g = (t, v) => rr.find(r => r.trait === t && r.group === v);
+  document.getElementById("k-power").innerHTML = `Power users are mostly self-signups who are still on Pro. Self-signups are <b>${X(g("signup channel", "self-signup").ratio)}</b> as likely as average to be power users and accounts sales created <b>${X(g("signup channel", "sales-created").ratio)}</b>; people still on Pro are <b>${X(g("Pro history", "Pro today").ratio)}</b>. Candidates with a low viability score, under 1 on our 0 to 5 scale (long-shot races), are also more likely (${X(g("viability score", "under 1").ratio)}); we don't know why yet. Candidates in our ideal customer profile (ICP) and those listed by an election data vendor are close to average.`;
+  document.getElementById("r-power").innerHTML = `<span class="lbl">What to do:</span> marketing and product could aim at candidates in long-shot races (viability under 1) who sign up on their own: they are the likeliest to become power users. We don't know why yet, so ask some of them before building on it. We don't recommend CaS calls on this evidence: people called before their first send are more often power users, but every Pro upgrade books a call, so the call mostly marks people who were already committed (below).`;
+  document.getElementById("s-ratio").textContent = `2026 people who reached voters. 1x = as likely as average to be a power user; 2x = twice as likely; 0.5x = half. Groups under 30 people and unknowns are left out; faded under 100. ICP = our ideal customer profile. Corroborated = an election data vendor (BallotReady, TechSpeed or DDHQ) lists the race. Viability = our 0 to 5 score of how winnable the race is. Pro status is today's.`;
+  const keep = rr.filter(r => r.n >= 30 && r.group !== "unknown" && !(r.trait === "Pro history" && r.group === "never Pro"));
+  const nameG = { "Pro today": "still on Pro", "Pro before, lapsed": "had Pro, cancelled" };
+  const nameT = { "Pro history": "Pro", "signup channel": "How they signed up", "office level": "Office level", "district size": "District size (voters)", incumbency: "Incumbency", contest: "Contest", "viability score": "Viability score", corroborated: "Listed by a data vendor", ICP: "Ideal customer profile" };
+  ratioDots("c-ratio", keep.map(r => ({ ...r, trait: nameT[r.trait] || r.trait, group: nameG[r.group] || r.group.replace(/^\d\. /, "") })));
+  const cas = D.cas_ratio;
+  document.getElementById("s-cas").innerHTML = `People who reached voters in 2026. CaS = our candidate success team. A completed CaS call = a meeting logged completed in HubSpot, or a connected call, before the first send. Every Pro upgrade books a CaS call, and ${D.cas_pro_called.called_pro_today} of those called are still on Pro against ${D.cas_pro_called.not_called_pro_today} of the rest, so this shows who was called, not whether the call helped.`;
+  ratioDots("c-cas", cas.map(r => ({ trait: "", group: r.group, n: r.n, power_users: r.power_users, ratio: r.ratio })));
+  const pf = D.pu_features;
+  table("t-puprof", ["Tool", "Power users", "Other activated users", "Times as likely"], Object.keys(FL).map(f => {
+    const a = pf["power users"].find(r => r.feature === f), b = pf["other activated"].find(r => r.feature === f);
+    const ra = a.users / a.eligible, rb = b.users / b.eligible, m = rb ? ra / rb : 0;
+    const ok = a.users >= 30 && b.users >= 30;
+    return [FL[f], R(a.users, a.eligible), R(b.users, b.eligible), ok ? [X(m), "", Math.min(1, (m - 1) / 4)] : "too few"];
+  }));
+
+  // 5. Coming back
+  const W8 = D.weekly, ser = (k, name, c, dash) => ({ name, c, dash, pts: W8[k].map(p => ({ x: p.w, y: p.rate, tip: `${p.w} weeks out: ${N(p.hit)} of ${N(p.n)} active` })) });
+  lines("c-weekly", [ser("2026|power users", "2026 power users", css("--fg")), ser("2026|activated", "2026 reached voters", css("--blue")),
+    ser("2025|activated", "Fall 2025 reached voters", css("--grey")), ser("2026|finished onboarding, never sent", "2026 finished onboarding, never sent", css("--orange"), true)],
+    { xs: [26, -4], ymax: 1, yticks: [0.2, 0.4, 0.6, 0.8, 1], xticks: [26, 20, 16, 12, 8, 4, 0, -4], mark: 0, markLabel: "election week", xTitle: "Weeks before the election (negative = after)" });
+  const a26 = W8["2026|activated"], w26 = a26.find(p => p.w === 26), wpk = a26.filter(p => p.rate !== null && p.w > 0).reduce((m, p) => p.rate > m.rate ? p : m);
+  const ns = W8["2026|finished onboarding, never sent"], nsMax = ns.filter(p => p.rate !== null).reduce((m, p) => p.rate > m.rate ? p : m);
+  const rt = D.returns.find(r => r.cycle === 2026);
+  const RA = D.return_actions, pmin = Math.round(Math.min(...RA.pace.map(r => r.per100))), pmax = Math.round(Math.max(...RA.pace.map(r => r.per100)));
+  document.getElementById("k-back").innerHTML = `Use climbs toward election day: ${P(w26.hit / w26.n)} of people who reached voters were active 26 weeks out, ${P(wpk.hit / wpk.n)} at ${wpk.w} weeks out. People who finished onboarding but never sent barely come back at all (never above ${P(nsMax.rate)} in a week), so a prompt has little to build on. Early-voting and all-mail states follow the same curve. When people come back after 14+ days away, they come back for outreach: once past the dashboard, where Win opens, ${P(RA.went.Outreach / RA.n)} go there first. Returns come at a steady ${pmin} to ${pmax} per 100 people a week from a year out to election day, so the rise in use comes mostly from people staying active, not coming back. ${P(rt._no / rt._n)} of returns had no team contact in the week before. Texts are scheduled a median ${D.sched.find(r => r.channel === "p2p").median} days ahead, so a prompt to send needs to land a week or more before key dates.`;
+  document.getElementById("r-back").innerHTML = `<span class="lbl">What to do:</span> product and lifecycle could link nudges straight to outreach, not the dashboard, since that's what people come back for. Prompts to send need to land a week or more before key dates. We can't yet see what prompts a return: only ${P(1 - rt._no / rt._n)} of returns followed a team contact in the week before, and Win events don't record which link brought someone in. Adding a source tag to links in our emails and texts would let the next report answer it. Week by week: <a href="https://app.sigmacomputing.com/good-party/workbook/GP-User-Journey-or-Pirate-Metrics-n49wZZDj101PyBYsywKsw?:nodeId=94mEqxnjeP">Retention page of the GP User Journey dashboard</a>.`;
+  const RL = { outreach_send: "Sent outreach", ...FL };
+  document.getElementById("s-retact").textContent = `2026, people who reached voters, coming back before their election after 14+ days with no Win activity: ${N(RA.n)} returns by ${N(RA.people)} people. Each bar: share of returns | returns. Campaign work on the return day or the 2 days after; one return can include several, so bars add to more than 100%. Content builder was retired Sep 10 (faded).`;
+  const GO = ["Outreach", "Contacts", "Profile", "Voter data", "somewhere else"], stay = RA.n - RA.went_n;
+  document.getElementById("s-retgo").textContent = `2026 returns after 14+ days away (${N(RA.n)}): the first part of Win opened outside the dashboard and Pro banners, that day or the 2 days after. Each bar: share of returns | returns.`;
+  hbars("c-retgo", GO.map(k => ({ label: k === "somewhere else" ? "Somewhere else" : k, a: (RA.went[k] || 0) / RA.n, la: `${P((RA.went[k] || 0) / RA.n)} | ${N(RA.went[k] || 0)}` }))
+    .concat([{ label: "Only the dashboard", a: stay / RA.n, la: `${P(stay / RA.n)} | ${N(stay)}`, color: css("--grey") }]), { labelW: 130, valW: 90, max: 0.6 });
+  hbars("c-retpace", RA.pace.map(r => ({ label: r.bin, a: r.per100, la: `${r.per100.toFixed(1)} | ${N(r.returns)} returns`, ta: `${r.bin} out: ${N(r.returns)} returns over ${N(r.person_weeks)} person-weeks` })), { labelW: 100, valW: 120, max: 12 });
+  hbars("c-retact", [{ label: "No campaign work", a: RA.looked / RA.n, la: `${P(RA.looked / RA.n)} | ${N(RA.looked)}`, color: css("--grey") }]
+    .concat(RA.rows.map(r => ({ label: RL[r.feature], a: r.returns / RA.n, la: `${P(r.returns / RA.n)} | ${N(r.returns)}`, fade: r.feature === "content_builder" }))), { labelW: 190, valW: 90, max: 0.6 });
+  const ev = D.weekly_ev;
+  lines("c-ev", ["all-mail", "in-person early voting"].map((k, i) => ({ name: k === "all-mail" ? "All-mail states" : "In-person early voting states", c: i ? css("--blue") : css("--grey"),
+    pts: ev[k].map(p => ({ x: p.w, y: p.n >= 100 ? p.rate : null, tip: `${p.w} weeks out: ${N(p.hit)} of ${N(p.n)} active` })) })),
+    { xs: [12, 0], ymax: 0.8, yticks: [0.2, 0.4, 0.6, 0.8], xticks: [12, 9, 6, 3, 0], xTitle: "Weeks before the election", H: 220 });
+  const sched = D.sched.filter(r => r.cycle === 2026), bins = ["same day", "1-2 days", "3-6 days", "7-13 days", "14+ days"];
+  const sp = sched.find(r => r.channel === "p2p"), sr = sched.find(r => r.channel === "robocall");
+  hbars("c-sched", bins.map(b => ({ label: b, a: sp.bins[b] / sp.n, la: R(sp.bins[b], sp.n), b: sr.bins[b] / sr.n, lb: R(sr.bins[b], sr.n), fadeb: true })),
+    { labelW: 80, valW: 90, max: 0.6, keys: () => [[css("--blue"), `Texts (${N(sp.n)}), median ${sp.median} days`, "sq"], [css("--grey"), `Robocalls (${N(sr.n)}), median ${sr.median} days`, "sq"]] });
+
+  // 6. Targeting
+  const t = D.targeting, ws = D.within_sender, wp = D.within_pooled;
+  document.getElementById("n-within").textContent = N(ws.n);
+  document.getElementById("k-out").innerHTML = `No clear difference. When the same candidates sent both, targeted texts got ${wp.targeted.replies_per_1000} real replies per 1,000 and untargeted ${wp.untargeted.replies_per_1000}, a gap within normal variation. Opt-outs were about the same too, and outnumber real replies about 8 to 1: roughly ${Math.round(wp.untargeted.optouts_per_1000)} per 1,000 texts.`;
+  document.getElementById("r-out").innerHTML = `<span class="lbl">What to do:</span> a deeper look with the research team. Targeted texts don't get more replies than untargeted ones from the same senders today. Replies are rare and may not be what targeting is for, so the question is whether a different targeting strategy, or an outcome closer to its purpose such as turnout or vote share, shows a difference.`;
+  const pair = (id, k, unit) => hbars(id, [
+    { label: "Targeted", a: wp.targeted[k], la: `${wp.targeted[k]} ${unit}` },
+    { label: "Untargeted", a: wp.untargeted[k], la: `${wp.untargeted[k]} ${unit}`, color: css("--grey") }], { labelW: 90, valW: 70, max: Math.max(wp.targeted[k], wp.untargeted[k]) * 1.1 });
+  pair("c-rep1000", "replies_per_1000", "");
+  pair("c-opt1000", "optouts_per_1000", "");
+
+  // Appendix
+  table("t-assume", ["Assumption", "Detail"], D.assumptions);
+  table("t-lead", ["Group", "2026 median days", "People", "Fall 2025 median days", "People"], ["activated", "ICP activated", "corroborated activated", "power users"].map(c => {
+    const a = D.lead.find(r => r.cycle === 2026 && r.cut === c), b = D.lead.find(r => r.cycle === 2025 && r.cut === c);
+    return [c.replace("activated", "reached voters"), N(a.median_days), N(a.n), N(b.median_days), N(b.n)];
+  }));
+  table("t-funnelch", ["Races in", "Channel", "Signups", "Logged in", "Started onboarding", "Finished onboarding", "Reached voters"],
+    Object.entries(D.funnel).map(([k, f]) => [k.split("|")[0], k.split("|")[1], N(f.base), ...f.steps.slice(1).map(s => [R(s.n, f.base), "", s.n / f.base])]));
+  const jobs = [...new Set(D.jobs.map(r => r.job))];
+  table("t-jobs", ["Job", "2026", "Fall 2025"], jobs.map(j => {
+    const a = D.jobs.find(r => r.job === j && r.cycle === 2026), b = D.jobs.find(r => r.job === j && r.cycle === 2025);
+    return [j === "published a website" ? "published a website (2026: to June)" : j, [R(a.users, a.n), "", a.users / a.n], [R(b.users, b.n), "", b.users / b.n]];
+  }));
+  table("t-cas", ["Group", "Team", "People", "Held", "Outcome unknown", "Not held", "Email or text only", "None"],
+    D.cas.map(r => [r.group, r.team, N(r.n), r.held, r.outcome_unknown, r.call_or_meeting_not_held, r.email_or_text_only, r.none]));
+  document.getElementById("s-ret").textContent = "People who reached voters, coming back after 14+ days with no Win activity. A team touch in the 7 days before the return (not counting the return day); for spells of 21+ days, compared with the 7 days before that.";
+  table("t-ret", ["Races in", "Returns", "No touch in the week before", "Spells of 21+ days", "Touch in the week before", "Touch the week before that"],
+    D.returns.map(r => [r.cycle === 2026 ? "2026" : "Fall 2025", N(r.returns), r.no_touch_week_before, N(r.spells_21plus), r.touch_week_before, r.touch_week_prior]));
+  document.getElementById("s-within").textContent = `${ws.n} senders. Each dot is one sender's targeted minus untargeted real reply rate. Median ${(ws.reply_diff_median * 100).toFixed(2)} points, 95% interval ${ws.reply_ci.replace(/-?0\.\d+/g, v => (v * 100).toFixed(2))} points.`;
+  strip("c-within", ws.diffs, ws.reply_diff_median, JSON.parse(ws.reply_ci));
+  table("t-pooled", ["Texts", "Campaigns", "Senders", "Recipients", "Real replies", "Opt-outs", "Real replies", "Opt-outs"],
+    D.pooled.map(r => [r.targeted ? "Targeted" : "Untargeted", N(r.sends), N(r.senders), N(r.recipients), N(r.real_replies), N(r.opted_out), (r.real_reply_rate * 1000).toFixed(1) + " per 1,000", (r.optout_rate * 1000).toFixed(1) + " per 1,000"]));
+  const CHN = { p2p: "texts", robocall: "robocalls", nativeDoorKnocking: "door knocking", nativePhoneBanking: "phone banking" };
+  table("t-purpose", ["Channel", "Campaigns", "Top purpose", "Second", "Third"], Object.keys(CHN).map(c => {
+    const r = D.purpose.filter(x => x.channel === c).sort((a, b) => b.sends - a.sends).slice(0, 3);
+    return [CHN[c], N(r[0].of), ...r.map(x => `${x.purpose.replaceAll("_", " ")} ${R(x.sends, x.of)}`)];
+  }));
+  table("t-sps", ["Group", "2026", "Fall 2025"], ["activated", "ICP activated", "corroborated activated", "power users"].map(c => {
+    const a = D.sends_per_sender.find(r => r.cycle === 2026 && r.cut === c), b = D.sends_per_sender.find(r => r.cycle === 2025 && r.cut === c);
+    return [c.replace("activated", "reached voters"), a.sends_per_sender_committed_or_requested, b.sends_per_sender_committed_or_requested];
+  }));
+  document.getElementById("run").textContent = `Data pulled ${D.run_ts}. Source: analyze.py in analytics/projects/win_engagement_2026.`;
+
+  // What we found: one plain line per section, with its numbers.
+  const tl = [
+    ["signup", `<b>Signups 1 to 3 months before their election are the likeliest to act</b>: ${P(nearRate)} of self-signups 4 to 11 weeks out reached voters, against ${P(farRate)} of the ${P(farShare)} who sign up 39+ weeks out.`],
+    ["start", `<b>People finish onboarding, then stop.</b> ${P(fin.n / F.base)} of signups since May 2025 finish onboarding; ${P(sent.n / F.base)} reach voters.`],
+    ["features", `<b>Our most active users lean into AI help and opponent research</b>: power users are ${X(pfx("ai_help").m)} and ${X(pfx("opponent_lookup").m)} as likely as other activated users to use them.`],
+    ["power", `<b>Power users are mostly self-signups still on Pro</b>: self-signups are ${X(g("signup channel", "self-signup").ratio)} as likely as average to be one, sales-created accounts ${X(g("signup channel", "sales-created").ratio)}.`],
+    ["back", `<b>Use is highest in the last 4 weeks before the election (${P(wpk.hit / wpk.n)} active at ${wpk.w} weeks out), and people who come back after time away come back for outreach</b>: ${P(RA.went.Outreach / RA.n)} go there first once past the dashboard.`],
+    ["outreach", `<b>Targeting shows no clear effect on how voters respond</b>: about 5 to 6 real replies per 1,000 texts either way, and about 8 times as many opt-outs.`],
+  ];
+  const rc = [
+    ["signup", "Go-to-market", "Time self-signup pushes to each race's own calendar, adding one 1 to 3 months before the election, when signups are likeliest to act."],
+    ["start", "Product", "Focus on the step from finished onboarding to a first send."],
+    ["features", "Product", "Test promoting AI help earlier; treat opponent research as a Pro upsell test."],
+    ["power", "Marketing, product", "Aim self-signup marketing at long-shot races, and ask those candidates why they engage."],
+    ["back", "Product, lifecycle", "Link nudges straight to outreach, and tag links in our emails and texts so we can see what brings people back."],
+    ["outreach", "Research", "Take a deeper look at targeting strategy and at outcomes beyond replies."],
+  ];
+  const QS = { signup: "When do candidates sign up?", start: "Where do people get stuck before their first outreach?", features: "Which tools do people use and come back to?",
+    power: "Who are the most active users?", back: "When do people use Win, and what brings them back?", outreach: "Does targeting change how voters respond?" };
+  document.getElementById("sum").innerHTML = `<div class="row hd" role="row"><span></span><span role="columnheader">Question</span><span role="columnheader">What we found</span><span role="columnheader">What we suggest</span></div>` +
+    tl.map(([id, h], i) => { const [, who, r] = rc.find(x => x[0] === id);
+      return `<div class="row" role="row"><span class="n">${i + 1}</span><span class="q" role="cell"><a href="#${id}">${QS[id]}</a></span>` +
+        `<span role="cell"><span class="lab">What we found</span>${h}</span><span role="cell"><span class="lab">What we suggest</span><span class="who">${who}:</span> ${r}</span></div>`; }).join("");
+}
+
+build();
+const ro = new ResizeObserver(() => CHARTS.forEach(c => { const w = c.host.clientWidth; if (w !== c.w) { c.w = w; c.render(); } }));
+CHARTS.forEach(c => ro.observe(c.host));
+document.querySelectorAll("details").forEach(d => d.addEventListener("toggle", () => CHARTS.forEach(c => { if (d.contains(c.host)) { c.w = c.host.clientWidth; c.render(); } })));
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => CHARTS.forEach(c => c.render()));
+</script>
