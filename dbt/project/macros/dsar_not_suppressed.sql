@@ -125,19 +125,36 @@
 
 {% macro hubspot_contact_not_suppressed(contact_id_column) %}
     {#- For models that carry a contact id but not the contact's own fields. A contact
-        missing from the source passes; the caller's hs_contact_id predicate covers it.
+        missing from both producers passes; the caller's own hs_contact_id predicate
+        covers that case.
 
-        Reads the history layer, not the Airbyte source: that is where the resolved
-        rows live now, and its typed email/phone columns are the ones a Lakeflow row
-        has, since a Lakeflow contact carries no `properties` blob. Filtering the raw
-        JSON here would let a submission from a Lakeflow-only contact whose phone is
-        registered past the filter. -#}
+        Reads the two feeds, not int__hubspot_contacts_history. That table's DSAR
+        post_hook deletes every row suppressed by id, email or phone, and it builds
+        before this lookup runs, so a suppressed row is never there to be found and
+        filtering on it would silently pass every email- or phone-suppressed contact.
+        The feeds keep their values, so the suppressed set is computed from both.
+
+        Residual: a contact created after 2026-11-17, suppressed only by email or
+        phone and then deleted from HubSpot, is in neither feed. The DSAR procedure
+        registers the HubSpot contact id, which the caller's hs_contact_id predicate
+        covers. -#}
     not exists (
         select 1
         from
             (
+                with
+                    contacts as (
+                        select cast(hs_object_id as string) as id, email, phone
+                        from {{ source("lakeflow_source", "contacts") }}
+                        union all
+                        select
+                            cast(id as string) as id,
+                            get_json_object(properties, '$.email') as email,
+                            get_json_object(properties, '$.phone') as phone
+                        from {{ source("airbyte_source", "hubspot_api_contacts") }}
+                    )
                 select id as suppressed_contact_id
-                from {{ ref("int__hubspot_contacts_history") }}
+                from contacts
                 where
                     not (
                         {{

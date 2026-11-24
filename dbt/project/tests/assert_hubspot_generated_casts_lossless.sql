@@ -58,21 +58,21 @@
         -- contact HubSpot has since merged or deleted stays here by design and is
         -- gone from live Lakeflow, so counting it would read as cast loss forever;
         -- a newer version would be comparing two different payloads.
+        stored_lakeflow_rows as (
+            select id, lastmodifieddate from winning_source where _source = 'lakeflow'
+        ),
+        live_lakeflow_rows as (
+            select cast(hs_object_id as string) as id, lastmodifieddate
+            from {{ source("lakeflow_source", "contacts") }}
+        ),
         lakeflow_ids as (
-            select live.id
-            from
-                (
-                    select id, lastmodifieddate
-                    from winning_source
-                    where _source = 'lakeflow'
-                ) as stored
+            select live_lakeflow_rows.id
+            from stored_lakeflow_rows
             inner join
-                (
-                    select cast(hs_object_id as string) as id, lastmodifieddate
-                    from {{ source("lakeflow_source", "contacts") }}
-                ) as live
-                on stored.id = live.id
-                and stored.lastmodifieddate = live.lastmodifieddate
+                live_lakeflow_rows
+                on stored_lakeflow_rows.id = live_lakeflow_rows.id
+                and stored_lakeflow_rows.lastmodifieddate
+                = live_lakeflow_rows.lastmodifieddate
         ),
         raw_airbyte as (
             select
