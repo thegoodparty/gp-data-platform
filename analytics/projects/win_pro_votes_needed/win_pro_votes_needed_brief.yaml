@@ -233,3 +233,27 @@ amendments:
       5. Canceled-before-election stays excluded (Tristan: reads as not serious about the race).
          "Activated" kept as the company-wide term and defined at first use.
     requested_by: Tristan, approving the review findings.
+  - date: 2026-11-16
+    kind: amend (reporting only; population, target and comparison unchanged)
+    changes: |
+      1. The share over 5,000 texts leads with people who texted; all paying Pro customers are
+         shown beside it. Across all Pro, non-texters count as covered, so "5,000 covers three in
+         four of every band" read as the allowance being big enough. Among texters at 2,500+ votes
+         needed, 60% to 81% went past 5,000 (27% of all Pro in those bands). Same change as
+         DATA-2810 amendment 3.
+    requested_by: Tristan, reading the activated view against the headline.
+  - date: 2026-11-18
+    kind: amend (reporting and count recovery; population, target and comparison unchanged)
+    changes: |
+      Same change as DATA-2810 amendment 4: Amplitude recipientCount fills committed p2p sends
+      where gp-api holds a null or 0 count, and the over-5,000 share is written "at least X%,
+      up to Y%" everywhere, including the all-Pro figure that was shown as a bare floor.
+    requested_by: Tristan, 2026-11-18, noting the pages read differently from the fixed DATA-2809 figure.
+  - date: 2026-11-20
+    kind: amend (outcome ceiling only; population, target and comparison unchanged)
+    changes: |
+      Same change as DATA-2810 amendment 5 (3): the "up to" end of the over-5,000 share also counts
+      texters with a known count plus sends no source counted. At 2,500+ votes the texter range is
+      at least 63%, up to 78% (was 76%). The page's references to DATA-2810 now say it suggests,
+      not found, and the bundle recommendation reads "if texts are bundled".
+    requested_by: Tristan, 2026-11-20, approving the DATA-2810 reviewers' changes.

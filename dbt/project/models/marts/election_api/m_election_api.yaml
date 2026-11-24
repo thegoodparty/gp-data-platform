@@ -8,6 +8,17 @@ models:
       publishes no candidacies, so those races are not served with an empty
       roster.
     columns:
+      - name: first_name
+        description: >
+          Candidate given name. Open: the race page publishes it as public
+          record.
+        databricks_tags:
+          open: "true"
+      - name: last_name
+        description: >
+          Candidate family name. Open for the same reason as first_name.
+        databricks_tags:
+          open: "true"
       - name: br_database_id
         description: >
           BallotReady database ID of the candidacy. Negative for civics fills,
@@ -847,6 +858,24 @@ models:
           - not_null
           - unique
           - is_uuid
+      - name: first_name
+        description: >
+          Given name, from BallotReady first and the product record otherwise.
+          Open: a published profile's name is public record.
+        databricks_tags:
+          open: "true"
+      - name: last_name
+        description: >
+          Family name, from BallotReady first and the product record otherwise.
+          Open: a published profile's name is public record.
+        databricks_tags:
+          open: "true"
+      - name: full_name
+        description: >
+          BallotReady full name where present, else first and last joined. Open
+          for the same reason as its parts.
+        databricks_tags:
+          open: "true"
       - name: slug
         description: >
           slugify(first_name-last_name) with an 8-hex suffix from the person id.

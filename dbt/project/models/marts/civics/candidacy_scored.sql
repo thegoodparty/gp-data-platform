@@ -20,6 +20,21 @@ with
     scored as (
         select gp_candidacy_id, viability_rating_2_0, score_viability_automated
         from {{ ref("int__civics_viability_scoring") }}
+    ),
+
+    -- The scorer's model is trained on independent, nonpartisan and third-party
+    -- candidacies, so a major-party score is out of sample and is not published.
+    -- The race's own partisanship is the wrong filter: independents in partisan
+    -- races are in sample.
+    gated as (
+        select
+            cy.*,
+            coalesce(
+                {{ parse_party_affiliation("cy.party_affiliation") }}
+                in ('Democrat', 'Republican'),
+                false
+            ) as is_major_party
+        from {{ ref("candidacy") }} as cy
     )
 
 select
@@ -52,6 +67,8 @@ select
     cy.br_position_database_id,
     -- Viability override: new civics scorer wins, old candidacy value gap-fills.
     case
+        when cy.is_major_party
+        then null
         when scored.viability_rating_2_0 is not null
         then scored.viability_rating_2_0
         else cy.viability_score
@@ -64,6 +81,8 @@ select
     -- Label gated on the SAME condition as the score above, so the pair is always
     -- internally consistent (never a new number with an old label).
     case
+        when cy.is_major_party
+        then null
         when scored.viability_rating_2_0 is not null
         then scored.score_viability_automated
         else cy.score_viability_automated
@@ -71,5 +90,5 @@ select
     cy.source_systems,
     cy.created_at,
     cy.updated_at
-from {{ ref("candidacy") }} as cy
+from gated as cy
 left join scored on cy.gp_candidacy_id = scored.gp_candidacy_id

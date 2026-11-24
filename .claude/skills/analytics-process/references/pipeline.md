@@ -20,6 +20,7 @@ doc documents the flow; a human (or the process skill stepping through it) drive
 | G | **Results checkpoint** | Orchestrator → human (hard gate) | the executed notebook + robustness checks | a human go / no-go | **Hard stop after execution.** Present results and robustness checks; do **not** dispatch any reviewer until the human approves. The human may redirect scope here, which is cheaper than a wasted review cycle. A clean result or an eager requester does not waive the gate. This gate is also what makes the reviewers safe: in the 2026-07 quality-bench ablation, reviewers dispatched without it (headless, no human arbiter) anchored on the draft's frame — auditing execution while endorsing wrong population choices ("no blockers") — and their approval measurably *increased* confident wrongness (judge 1.17 vs 1.61 docs-only, 2=clean). The gate is load-bearing, not ceremony. |
 | 3 | **Review (methodology + interpretation)** | `product-data-scientist` | the executed notebook, read against the brief | a methodology review + an interpretation of results | Read-only and advisory. Surfaces leakage / survivorship / calibration concerns and interprets effect sizes. Does not edit code or open PRs. |
 | + | **Review (usefulness)** | `product-manager` | the plan or the deliverable | a framing / actionability review | Read-only and advisory. Asks whether this answers the team's real question and whether names/segments/thresholds match how consumers think. Invoked proactively at plan checkpoints and pre-PR — a checkpoint, not a strict sequence position. |
+| + | **Review (plain reader)** | `general-purpose` agent with a sales / go-to-market persona | the rendered page only | where a non-analyst gets lost: unclear terms, charts that need hovering, numbers that disagree | Before every publish of a report or findings page. See [Plain-reader review](#plain-reader-review). |
 
 ## Legibility: stage banners, gate receipts, and the TodoWrite tree
 
@@ -46,7 +47,7 @@ Use the stock why-clauses below rather than improvising new ones each run:
 | 2 | Find sources | resolve every concept to its governed definition — docs drift, the catalog is ground truth |
 | 3 | Brief | freeze the framing as a spec so execution can't quietly reinterpret it |
 | 4 | Execute | build the working set once so every cut is a free re-slice |
-| 5 | Review | two independent reviewers check methodology and usefulness before results are trusted |
+| 5 | Review | two independent reviewers check methodology and usefulness before results are trusted; a plain-reader review checks the page before it is published |
 | 6 | Close | route what we learned back into the docs so the next run starts smarter |
 
 **Gate receipts.** When a checkpoint clears, say so explicitly instead of silently moving on —
@@ -85,7 +86,25 @@ Build each reviewer's invocation prompt from this template — and nothing more:
 
 **Model note.** The reviewers inherit the session model (their frontmatter deliberately carries no pin — intent recorded 2026-07: "strong model" was the goal and a literal pin lags model generations). Run substantive reviews in a session on a strong model tier.
 
-**On reviewer conflict:** when the two reviews disagree, present both to the user verbatim — do not arbitrate, average, or synthesize away the disagreement. The two lenses (rigor, usefulness) are allowed to pull in different directions; picking a winner is the human's call.
+**On reviewer conflict:** when the methodology and usefulness reviews disagree, present both to the user verbatim — do not arbitrate, average, or synthesize away the disagreement. The two lenses (rigor, usefulness) are allowed to pull in different directions; picking a winner is the human's call.
+
+## Plain-reader review
+
+Before each publish of a report or findings page, after the page passes the plain-reader test in
+[report-design.md](report-design.md), dispatch one `general-purpose` agent as a sales or
+go-to-market lead who knows the product but not the data. It reads **only the rendered page**:
+charts are drawn by script, so it renders the page headlessly (jsdom) and reads the text and each
+chart's labels. It must not read the analysis code or the brief. For each section it answers:
+what is this telling me, which words or numbers would I misread, which chart can't I read
+without hovering, and what contradicts something else on the page. It ends with its top five fixes.
+
+On the 2026 Win engagement report it caught one concept counted on three different bases, a
+chart's end labels that didn't match the text, and four undefined terms, none of which the
+methodology or usefulness reviews flagged.
+
+**Triage every review finding** (all three reviews) with the rule in
+[report-design.md](report-design.md#where-review-findings-go): it goes on the page only if it
+changes the answer a reader takes away; otherwise it goes to the appendix or methods.
 
 ## Artifacts and where they land
 

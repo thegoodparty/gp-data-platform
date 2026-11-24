@@ -58,15 +58,6 @@ _CATEGORICAL_FEATURES = [
     "Parties_Description",
     "Residence_HHParties_Description",
     "ConsumerData_Homeowner_Probability_Model",
-    # Deliberately the trained name, not L2's MMA_Zone. This list builds
-    # the feature frame handed to a PROMOTED booster, and those boosters
-    # name their features Designated_Market_Area_DMA. Renaming here makes
-    # the frame lack that name, so the scorer NaN-fills it for every row
-    # and the market feature silently drops out of scoring while the
-    # models keep "working" (unseen categorical values map to NaN too).
-    # Held at the old name until both boosters are retrained on MMA_Zone
-    # and their categorical maps rebuilt from the new strings.
-    "Designated_Market_Area_DMA",
     "ConsumerData_Home_Purchase_Price_Code",
     "Voters_Gender",
     "ConsumerData_Credit_Rating",

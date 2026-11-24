@@ -6,7 +6,8 @@
 --
 -- The send must fall on or before the election: without it, a candidate who
 -- explores every tool but never does the core action reads as a power user.
--- The bar is still measured on all actors, so adding the gate does not move it.
+-- The bar is measured among senders too (int__power_user_bar_v2), so a power
+-- user is in the top 15% of candidates who reached voters.
 --
 -- v1 (int__user_power_user: sent, plus dashboard view-days) stays as the
 -- definition through mid-2026, so earlier reports reproduce. v1 rewarded a

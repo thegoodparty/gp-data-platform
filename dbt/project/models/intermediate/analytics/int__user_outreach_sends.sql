@@ -78,6 +78,8 @@ with
                 then 'robocall'
                 when outreach_type = 'socialMedia'
                 then 'social'
+                when outreach_type = 'email'
+                then 'email'
                 when outreach_type = 'nativeDoorKnocking'
                 then 'door_knocking'
                 when outreach_type = 'nativePhoneBanking'
@@ -105,6 +107,7 @@ with
                     'p2p',
                     'robocall',
                     'socialMedia',
+                    'email',
                     'nativeDoorKnocking',
                     'nativePhoneBanking'
                 )
@@ -201,6 +204,8 @@ with
                             coalesce(medium_property, channel_property)
                             in ('socialMedia', 'social')
                         then 'social'
+                        when coalesce(medium_property, channel_property) = 'email'
+                        then 'email'
                         else 'unattributed'
                     end
                 -- Every channel on one event since 2026-09-29, named by `medium`.
@@ -213,6 +218,8 @@ with
                         then 'robocall'
                         when medium_property = 'socialMedia'
                         then 'social'
+                        when medium_property = 'email'
+                        then 'email'
                         when medium_property = 'doorKnocking'
                         then 'door_knocking'
                         when medium_property = 'phoneBanking'

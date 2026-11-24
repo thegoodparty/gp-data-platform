@@ -105,11 +105,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
     district_type_from_columns = [district_type.district_type for district_type in district_type_from_columns]
 
     # The projection feeds carry district types L2 no longer ships a column for
-    # (Designated_Market_Area_DMA was the first: L2 renamed it to MMA_Zone on
-    # 2026-11-17), so selecting one by name fails the whole model with
-    # UNRESOLVED_COLUMN. Key off the columns the voter file actually has rather
-    # than maintaining a second list of retired types, which also covers the next
-    # one L2 retires.
+    # (Designated_Market_Area_DMA was the first: L2 renamed it to MMA_Zone), so
+    # selecting one by name would fail the whole model. Key off the columns the
+    # voter file actually has rather than maintaining a second list of retired types.
     l2_columns = set(l2_uniform_data.columns)
     district_type_from_columns = [
         district_type

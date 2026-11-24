@@ -44,6 +44,8 @@ with
                         then 'phone_banking'
                         when 'socialmedia'
                         then 'social'
+                        when 'email'
+                        then 'email'
                         when 'social'
                         then 'social'
                         when 'events'
