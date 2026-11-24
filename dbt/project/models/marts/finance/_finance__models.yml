@@ -862,3 +862,68 @@ unit_tests:
         # The whole org total falls to unattributed, and neither freshness column
         # is claimed.
         - {usage_date: "2026-11-15", person_email: unattributed, is_unattributed: true, cost_usd: 10, request_count: null, source_loaded_at: null, source_complete_through: null}
+
+  # The residual arithmetic is the core of the model, and a daily-total comparison
+  # cannot see a wrong split between a person row and the residual. This pins the
+  # whole shape: two seat ids sharing one mixed-case email sum into one lower-cased
+  # row, a null-email seat folds into the residual instead of becoming a blank
+  # person, and a day whose difference rounds to exactly zero emits no residual
+  # row at all.
+  - name: anthropic_daily_usage_person_split_and_residual
+    model: anthropic_daily_usage
+    given:
+      - input: ref('stg_airbyte_source__anthropic_api_cost_report')
+        format: sql
+        rows: |
+          select
+              timestamp '2026-11-15 00:00:00' as bucket_start,
+              cast(10.000000 as decimal(20, 6)) as amount,
+              timestamp '2026-11-17 20:25:00' as _airbyte_extracted_at
+          union all
+          -- rounds to the same cent as the seat row below, so the day has no residual
+          select
+              timestamp '2026-11-16 00:00:00',
+              cast(1.004000 as decimal(20, 6)),
+              timestamp '2026-11-17 20:25:00'
+      - input: ref('stg_airbyte_source__anthropic_api_user_cost_report')
+        format: sql
+        rows: |
+          select
+              timestamp '2026-11-15 00:00:00' as bucket_start,
+              'u1' as user_id,
+              cast('Alice@GoodParty.org' as string) as user_email,
+              cast(2.500000 as decimal(20, 6)) as amount,
+              cast(10 as bigint) as requests,
+              timestamp '2026-11-17 20:25:00' as _airbyte_extracted_at
+          union all
+          -- same person under a second vendor id and different casing
+          select
+              timestamp '2026-11-15 00:00:00', 'u5', 'alice@goodparty.org',
+              cast(0.500000 as decimal(20, 6)), cast(5 as bigint),
+              timestamp '2026-11-17 20:25:00'
+          union all
+          select
+              timestamp '2026-11-15 00:00:00', 'u2', 'bob@goodparty.org',
+              cast(3.000000 as decimal(20, 6)), cast(20 as bigint),
+              timestamp '2026-11-17 20:25:00'
+          union all
+          -- a deleted seat: no email, so its cost belongs to nobody
+          select
+              timestamp '2026-11-15 00:00:00', 'u3', cast(null as string),
+              cast(1.000000 as decimal(20, 6)), cast(3 as bigint),
+              timestamp '2026-11-17 20:25:00'
+          union all
+          select
+              timestamp '2026-11-16 00:00:00', 'u4', 'carol@goodparty.org',
+              cast(1.001000 as decimal(20, 6)), cast(7 as bigint),
+              timestamp '2026-11-17 20:25:00'
+    expect:
+      rows:
+        # Two vendor ids, one email, summed and lower-cased.
+        - {usage_date: "2026-11-15", person_email: "alice@goodparty.org", is_unattributed: false, cost_usd: 3, request_count: 15, source_complete_through: "2026-11-16"}
+        - {usage_date: "2026-11-15", person_email: "bob@goodparty.org", is_unattributed: false, cost_usd: 3, request_count: 20, source_complete_through: "2026-11-16"}
+        # Org total less the email-attributable seats, so it carries the deleted
+        # seat's cost as well as the non-seat share.
+        - {usage_date: "2026-11-15", person_email: unattributed, is_unattributed: true, cost_usd: 4, request_count: null, source_complete_through: "2026-11-16"}
+        # No residual row for the day whose rounded difference is zero.
+        - {usage_date: "2026-11-16", person_email: "carol@goodparty.org", is_unattributed: false, cost_usd: 1.001, request_count: 7, source_complete_through: "2026-11-16"}
