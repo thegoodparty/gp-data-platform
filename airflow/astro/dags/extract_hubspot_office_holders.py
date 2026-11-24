@@ -77,11 +77,10 @@ from pendulum import datetime, duration
 t_log = logging.getLogger("airflow.task")
 
 TOKEN_VARIABLE = "hubspot_companion_loader_token"
-# The loader's own location Variables, not the shared `databricks_catalog` one. The landing
-# is in the `raw` catalog, whose tables a Lakeflow full refresh also writes, so pointing this
-# at the catalog the other DAGs land dbt-readable copies in would put the rows somewhere the
-# dbt source never looks. They mirror the `hubspot_companion_database` and
-# `hubspot_companion_landing_schema` Variable, in `catalog.schema` form.
+# The loader's own location Variable, not the shared `databricks_catalog` one. The landing is
+# in `raw`, whose tables a Lakeflow full refresh also writes, so pointing this at the catalog
+# the other DAGs land dbt-readable copies in would put the rows somewhere the dbt source never
+# looks. It mirrors the `hubspot_companion_landing_schema` dbt var, in `catalog.schema` form.
 LANDING_SCHEMA_VARIABLE = "hubspot_companion_landing_schema"
 
 # The cadence is an owner decision, not a property of the loader, so it comes from the

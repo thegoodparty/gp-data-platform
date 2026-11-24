@@ -1879,25 +1879,27 @@ sources:
               meta:
                 sensitive: identifier
 
-  # Tables the companion loader lands beside Lakeflow's, in the same schema, for the
-  # objects Lakeflow Connect cannot reach. Every table is prefixed `companion_` so it
-  # cannot collide with a Lakeflow table: a full refresh writes by table name, so a
-  # shared name would let one producer overwrite the other's table.
+  # One source for both companion loader DAGs' tables, because they land in the same
+  # schema beside Lakeflow's and every table is prefixed `companion_` so it cannot collide
+  # with a Lakeflow one: a full refresh writes by table name, so a shared name would let one
+  # producer overwrite the other's table.
   - name: hubspot_companion
-    database: "{{ var('hubspot_companion_database', 'raw') }}"
-    schema: "{{ var('hubspot_companion_schema', 'hubspot') }}"
+    # One `catalog.schema` var, split here, so the loader and dbt cannot be pointed at
+    # different locations by setting one and not the other. The default is the production
+    # location: CI runs as dbt_cloud, which reads raw, and a dev run overrides the var.
+    database: "{{ var('hubspot_companion_landing_schema', 'raw.hubspot').split('.')[0] }}"
+    schema: "{{ var('hubspot_companion_landing_schema', 'raw.hubspot').split('.')[1] }}"
     description: >
-      HubSpot objects and associations landed by the companion loader DAGs, which cover
-      what Lakeflow Connect cannot: custom objects, and associations, which the Lakeflow
-      activity and contact tables do not carry. Both parts of the location are vars because
-      `raw` has no `_dev` sibling: production lands `raw.hubspot`, and a dev or CI run lands
-      `dev.hubspot`. No freshness config: these tables gain rows only when the loader runs,
-      and a full sweep on every run means a table that has stopped growing says nothing
-      about the object.
+      HubSpot objects and associations landed by the companion loader DAGs, for what
+      Lakeflow Connect cannot: custom objects, and associations, which the Lakeflow activity
+      and contact tables do not carry. `raw.hubspot` in production, `dev.hubspot` in dev,
+      because `raw` has no `_dev` sibling. No loaded_at_field and no freshness: these tables
+      gain rows only when the loader runs, so a quiet period is not a dead loader.
     config:
       freshness: null
 
     tables:
+
       - name: companion_office_holders
         description: >
           One row per Office Holder record per run, the full sweep the loader makes every
@@ -1937,6 +1939,38 @@ sources:
             description: The Airflow run id the marker completes.
           - name: completed_at
             description: When the marker was written, and what orders two complete runs.
+
+      - name: companion_activity_contact_associations
+        description: >
+          One row per activity per read: the complete set of contact ids linked
+          to a call, meeting, note or task, as a JSON array. An explicit `[]`
+          means the activity has no linked contact, which is different from no
+          row at all and is the reason the grain is a snapshot rather than a
+          link per row. Append-only, so a reader keeps the latest row per
+          (activity_type, activity_id).
+
+          Only contact associations are landed: nothing reads an activity's
+          company or deal links, and the same v4 endpoint extends to both if a
+          future model needs them.
+        columns:
+          - name: activity_type
+            description: CALL, MEETING, NOTE or TASK, matching the Lakeflow table it came from.
+          - name: activity_id
+            description: The HubSpot activity's `hs_object_id`, as a string.
+          - name: contact_ids_json
+            description: >
+              JSON array of linked HubSpot contact ids. `[]` when the activity
+              has none.
+          - name: source_changed_at
+            description: >
+              The activity's own `hs_lastmodifieddate`, which is also the
+              incremental cursor.
+          - name: extracted_at
+            description: When the loader read this activity from HubSpot.
+          - name: loaded_at
+            description: When the row landed, stamped server-side.
+          - name: dag_run_id
+            description: The Airflow run that landed the row.
 
   - name: model_predictions
     schema: model_predictions

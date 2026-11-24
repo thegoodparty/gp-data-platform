@@ -1,0 +1,32 @@
+{
+  "_comment": "Recorded fixture for POST /crm/v4/associations/calls/contacts/batch/read with inputs [{\"id\": \"101\"}, {\"id\": \"102\"}]. Activity 101 links two contacts; 102 has none and HubSpot omits it from results entirely, which is the shape that must still land an explicit empty array.",
+  "results": [
+    {
+      "from": {
+        "id": "101"
+      },
+      "to": [
+        {
+          "toObjectId": 9002,
+          "associationTypes": [
+            {
+              "category": "HUBSPOT_DEFINED",
+              "typeId": 194,
+              "label": null
+            }
+          ]
+        },
+        {
+          "toObjectId": 9001,
+          "associationTypes": [
+            {
+              "category": "HUBSPOT_DEFINED",
+              "typeId": 194,
+              "label": null
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
