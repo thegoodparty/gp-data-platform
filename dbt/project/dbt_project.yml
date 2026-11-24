@@ -184,6 +184,12 @@ seeds:
 
 # Use the user's home folder for uploading python notebooks
 # Shared folder use is deprecated due to governance concerns.
+# Stamps `sensitive` on the raw columns the source YAML and the L2 seed declare,
+# so propagation has a source to carry the analyst masks down from. The macro
+# returns nothing unless the target is prod and the command is run/build.
+on-run-start:
+  - "{{ apply_source_sensitive_tags() }}"
+
 flags:
   use_user_folder_for_python: True
   state_modified_compare_more_unrendered_values: True
