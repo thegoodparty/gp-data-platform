@@ -152,6 +152,9 @@ Copies upstream of the filter that still hold the rows:
 
 - `airbyte_source.*` landing tables and the insert-only `airbyte_internal` raw JSON. The
   gp-api source replicates by Xmin, not CDC, so a Postgres delete never reaches them.
+- `raw.amplitude_ingestion.*`, the Lakeflow Connect Amplitude export that replaced the
+  Airbyte stream. Amplitude's privacy deletion API reaches it only if the connector
+  re-exports the affected days.
 - `stg_airflow_source__ballotready_person_raw` and `stg_airflow_source__ballotready_candidacy_raw`,
   incremental merges. Their filters stop new rows and the downstream `int__` views
   re-filter, but a row already merged stays until a `--full-refresh` of that model.

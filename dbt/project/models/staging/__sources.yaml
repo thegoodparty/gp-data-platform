@@ -884,6 +884,15 @@ sources:
         description: Daily active users, one row per segment per day.
         config:
           loaded_at_field: "cast(date as timestamp)"
+        # Staging folds segments into a map; a duplicate or null key fails it.
+        data_tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns: [date, segment]
+        columns:
+          - name: segment
+            data_tests:
+              - not_null
       - name: annotations
         description: Chart annotations.
         config:

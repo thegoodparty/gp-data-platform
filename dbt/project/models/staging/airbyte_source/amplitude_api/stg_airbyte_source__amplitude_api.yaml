@@ -8,6 +8,7 @@ models:
         description: "Date for the active users count (YYYY-MM-DD format)"
         tests:
           - not_null
+          - unique
       - name: statistics
         description: "JSON object containing active users statistics and metrics"
         tests:
@@ -353,6 +354,23 @@ models:
   - name: stg_airbyte_source__amplitude_taxonomy_event_type
     description: "Staging model for the Amplitude Govern taxonomy stream - one row per event_type with human-curated metadata. category is flattened to its name and tags is parsed to an array in this layer."
     columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from the Amplitude API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
       - name: event_type
         description: "Amplitude event name. Primary key for the taxonomy stream."
         tests:
