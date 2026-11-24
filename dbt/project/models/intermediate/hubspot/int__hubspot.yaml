@@ -338,3 +338,79 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "last_call_at >= first_call_at"
+
+  - name: int__hubspot_contacts_history
+    description: |
+      Never-delete layer over the HubSpot contacts feed: Lakeflow mirrors HubSpot's
+      current state, so a contact that is merged away or deleted stops being
+      returned. The seed unions the frozen Airbyte rows, Lakeflow winning; later
+      runs read Lakeflow only, change-filtered on lastmodifieddate, and a row
+      absent from Lakeflow is never deleted here. full_refresh is disabled because
+      a rebuild would lose every post-cutover deletion permanently.
+
+      Adding a registry property takes three steps: add the seed row, full-refresh
+      the contacts table in the Lakeflow pipeline, then run dbt once with
+      `--vars '{hubspot_contacts_history_rescan: true}'`, since the watermark would
+      otherwise skip unchanged contacts. Frozen Airbyte-only rows (merged or deleted
+      contacts) keep NULL for the new property unless backfilled from their
+      properties JSON.
+    columns:
+      - name: id
+        description: HubSpot contact Record ID.
+        data_tests:
+          - not_null
+          - unique
+      - name: _source
+        description: >
+          Which producer the row won from: `lakeflow`, or `airbyte` for the frozen
+          seed rows. Not published by the staging model; the cast-loss check
+          compares within one producer at a time with it.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [lakeflow, airbyte]
+      - name: lastmodifieddate
+        description: HubSpot's last modified time, read by the watermark filter.
+      # Sensitivity tags, as top-level column keys: under config: they drop
+      # silently. Same classifications the staging model already carries, which a
+      # reader of the mart layer would otherwise not see one layer down.
+      - name: address
+        databricks_tags:
+          sensitive: confidential
+      - name: birth_date
+        databricks_tags:
+          sensitive: confidential
+      - name: first_name
+        databricks_tags:
+          sensitive: confidential
+      - name: full_name
+        databricks_tags:
+          sensitive: confidential
+      - name: last_name
+        databricks_tags:
+          sensitive: confidential
+      - name: email
+        databricks_tags:
+          sensitive: identifier
+      - name: phone
+        databricks_tags:
+          sensitive: identifier
+      - name: clean_phone
+        databricks_tags:
+          sensitive: identifier
+
+  - name: int__hubspot_owners_history
+    description: |
+      Never-delete layer over the HubSpot owners feed: Lakeflow returns no archived
+      owners, so an owner archived after the seed would vanish and a historical
+      contact's owner could no longer be named. full_refresh is disabled because
+      the frozen Airbyte tables are the only copy of the archived ones.
+
+      Active versus archived membership is not read from this table's own
+      `archived` flag; the staging models derive it from the live Lakeflow snapshot.
+    columns:
+      - name: id
+        description: HubSpot owner ID.
+        data_tests:
+          - not_null
+          - unique

@@ -1591,14 +1591,16 @@ sources:
   - name: lakeflow_source
     schema: "{{ var('lakeflow_hubspot_schema', 'lakeflow_source_dev') }}"
     description: >
-      Tables landed by Databricks Lakeflow Connect. Managed pipelines, not dbt,
-      and a full refresh of one clears it first. The schema is a var so
-      production can point at its own once slice D decides it; until then every
-      target reads the dev schema. No loaded_at_field or freshness, because
-      there is no loader timestamp column.
+      Tables landed by Databricks Lakeflow Connect. Managed pipelines, not dbt, and
+      a full refresh of one clears it first, so anything HubSpot has dropped or
+      linked must live in our own layer. The schema is a var so production can
+      point at its own once slice D decides it; until then every target reads the
+      dev schema. No loaded_at_field or freshness, because there is no loader
+      timestamp column. The activity tables carry no associations at all.
 
-      The activity tables carry no associations at all, and no ARRAY column of
-      any kind, so the person a call, meeting, task or note reached is not here.
+      contacts, companies and owners are current state only, so a merged-away or
+      deleted record is absent; int__hubspot_contacts_history and
+      int__hubspot_owners_history keep what HubSpot drops.
     tables:
       - name: calls
         description: >
@@ -1765,6 +1767,66 @@ sources:
             config:
               meta:
                 sensitive: identifier
+      - name: contacts
+        description: >
+          HubSpot contacts as Lakeflow mirrors them: current state only, so a
+          merged-away or deleted contact is absent. The frozen history it lacks
+          lives in int__hubspot_contacts_history.
+        columns:
+          # Copied from the airbyte_source HubSpot entries and mapped to Lakeflow's
+          # column names; `properties` does not exist here. Inert until the
+          # source-tag hook's schema scope covers this source.
+          - name: email
+            config:
+              meta:
+                sensitive: identifier
+          - name: phone
+            config:
+              meta:
+                sensitive: identifier
+          - name: firstname
+            config:
+              meta:
+                sensitive: confidential
+          - name: lastname
+            config:
+              meta:
+                sensitive: confidential
+          - name: full_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: address
+            config:
+              meta:
+                sensitive: confidential
+          - name: birth_date
+            config:
+              meta:
+                sensitive: confidential
+      - name: companies
+        description: HubSpot companies, current state only.
+        columns:
+          - name: candidate_name
+            config:
+              meta:
+                sensitive: confidential
+          - name: candidate_email
+            config:
+              meta:
+                sensitive: identifier
+          - name: phone
+            config:
+              meta:
+                sensitive: identifier
+          - name: address
+            config:
+              meta:
+                sensitive: confidential
+      - name: owners
+        description: >
+          HubSpot owners, current state only, batch-refreshed each run. Returns
+          no archived owners; int__hubspot_owners_history keeps those.
 
   - name: model_predictions
     schema: model_predictions
