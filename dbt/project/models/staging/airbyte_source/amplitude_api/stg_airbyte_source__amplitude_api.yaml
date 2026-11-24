@@ -4,23 +4,6 @@ models:
   - name: stg_airbyte_source__amplitude_api_active_users
     description: "Staging model for Amplitude Active Users Counts stream - tracks daily active user counts with incremental sync"
     columns:
-      - name: _airbyte_raw_id
-        description: "Airbyte internal unique identifier for the raw record"
-        tests:
-          - not_null
-          - unique
-      - name: _airbyte_extracted_at
-        description: "Timestamp when the record was extracted from Amplitude API"
-        tests:
-          - not_null
-      - name: _airbyte_meta
-        description: "Airbyte metadata containing sync information"
-        tests:
-          - not_null
-      - name: _airbyte_generation_id
-        description: "Airbyte generation ID for tracking data lineage"
-        tests:
-          - not_null
       - name: date
         description: "Date for the active users count (YYYY-MM-DD format)"
         tests:
@@ -33,23 +16,6 @@ models:
   - name: stg_airbyte_source__amplitude_api_annotations
     description: "Staging model for Amplitude Annotations stream - contains chart annotations and notes"
     columns:
-      - name: _airbyte_raw_id
-        description: "Airbyte internal unique identifier for the raw record"
-        tests:
-          - not_null
-          - unique
-      - name: _airbyte_extracted_at
-        description: "Timestamp when the record was extracted from Amplitude API"
-        tests:
-          - not_null
-      - name: _airbyte_meta
-        description: "Airbyte metadata containing sync information"
-        tests:
-          - not_null
-      - name: _airbyte_generation_id
-        description: "Airbyte generation ID for tracking data lineage"
-        tests:
-          - not_null
       - name: id
         description: "Unique identifier for the annotation in Amplitude"
         tests:
@@ -71,23 +37,6 @@ models:
   - name: stg_airbyte_source__amplitude_api_average_session_length
     description: "Staging model for Amplitude Average Session Length stream - tracks daily average session duration with incremental sync"
     columns:
-      - name: _airbyte_raw_id
-        description: "Airbyte internal unique identifier for the raw record"
-        tests:
-          - not_null
-          - unique
-      - name: _airbyte_extracted_at
-        description: "Timestamp when the record was extracted from Amplitude API"
-        tests:
-          - not_null
-      - name: _airbyte_meta
-        description: "Airbyte metadata containing sync information"
-        tests:
-          - not_null
-      - name: _airbyte_generation_id
-        description: "Airbyte generation ID for tracking data lineage"
-        tests:
-          - not_null
       - name: date
         description: "Date for the session length data (YYYY-MM-DD format)"
         tests:
@@ -107,23 +56,6 @@ models:
   - name: stg_airbyte_source__amplitude_api_cohorts
     description: "Staging model for Amplitude Cohorts stream - contains user cohort definitions and metadata"
     columns:
-      - name: _airbyte_raw_id
-        description: "Airbyte internal unique identifier for the raw record"
-        tests:
-          - not_null
-          - unique
-      - name: _airbyte_extracted_at
-        description: "Timestamp when the record was extracted from Amplitude API"
-        tests:
-          - not_null
-      - name: _airbyte_meta
-        description: "Airbyte metadata containing sync information"
-        tests:
-          - not_null
-      - name: _airbyte_generation_id
-        description: "Airbyte generation ID for tracking data lineage"
-        tests:
-          - not_null
       - name: id
         description: "Unique identifier for the cohort in Amplitude"
         tests:
@@ -211,23 +143,6 @@ models:
   - name: stg_airbyte_source__amplitude_api_events
     description: "Staging model for Amplitude Events stream - contains individual user events with incremental sync"
     columns:
-      - name: _airbyte_raw_id
-        description: "Airbyte internal unique identifier for the raw record"
-        tests:
-          - not_null
-          - unique
-      - name: _airbyte_extracted_at
-        description: "Timestamp when the record was extracted from Amplitude API"
-        tests:
-          - not_null
-      - name: _airbyte_meta
-        description: "Airbyte metadata containing sync information"
-        tests:
-          - not_null
-      - name: _airbyte_generation_id
-        description: "Airbyte generation ID for tracking data lineage"
-        tests:
-          - not_null
       - name: app
         description: "Amplitude application ID"
         tests:
@@ -235,7 +150,7 @@ models:
       - name: dma
         description: "Designated Market Area code"
       - name: adid
-        description: "Android advertising ID"
+        description: "Android advertising ID. Not in the Lakeflow Connect export; always null."
       - name: city
         description: "City name where the event occurred"
       - name: data
@@ -243,7 +158,7 @@ models:
         tests:
           - not_null
       - name: idfa
-        description: "iOS advertising identifier"
+        description: "iOS advertising identifier. Not in the Lakeflow Connect export; always null."
       - name: plan
         description: "User's subscription plan"
         tests:
@@ -262,7 +177,7 @@ models:
       - name: region
         description: "Region code where the event occurred"
       - name: _schema
-        description: "Schema version for the event data"
+        description: "Schema version for the event data. Not in the Lakeflow Connect export; always null."
       - name: country
         description: "Country code where the event occurred"
       - name: library
@@ -300,7 +215,7 @@ models:
         tests:
           - not_null
       - name: source_id
-        description: "Source ID for the event"
+        description: "Source ID for the event. Not in the Lakeflow Connect export; always null."
       - name: _insert_id
         description: "Insert ID for deduplication"
         tests:
@@ -318,13 +233,13 @@ models:
       - name: os_version
         description: "Operating system version"
       - name: partner_id
-        description: "Partner ID for attribution"
+        description: "Partner ID for attribution. Not in the Lakeflow Connect export; always null."
       - name: session_id
         description: "Session identifier for grouping events"
         tests:
           - not_null
       - name: _insert_key
-        description: "Insert key for deduplication"
+        description: "Insert key for deduplication. Not in the Lakeflow Connect export; always null."
       - name: device_type
         description: "Type of device (phone, tablet, desktop, etc.)"
       - name: sample_rate
@@ -334,9 +249,9 @@ models:
         tests:
           - not_null
       - name: device_brand
-        description: "Brand of the device"
+        description: "Brand of the device. Not in the Lakeflow Connect export; always null."
       - name: device_model
-        description: "Model of the device"
+        description: "Model of the device. Not in the Lakeflow Connect export; always null."
       - name: location_lat
         description: "Latitude coordinate of the event location"
         tests:
@@ -380,45 +295,25 @@ models:
       - name: server_upload_time
         description: "Server-side timestamp when the event was uploaded"
       - name: user_creation_time
-        description: "Timestamp when the user was created"
+        description: "Timestamp when the user was created. Not in the Lakeflow Connect export; always null."
       - name: device_manufacturer
-        description: "Manufacturer of the device"
+        description: "Manufacturer of the device. Not in the Lakeflow Connect export; always null."
       - name: amplitude_event_type
-        description: "Amplitude's internal event type classification"
+        description: "Amplitude's internal event type classification. Not in the Lakeflow Connect export; always null."
       - name: is_attribution_event
-        description: "Whether this is an attribution event"
+        description: "Whether this is an attribution event. Not in the Lakeflow Connect export; always null."
       - name: server_received_time
         description: "Timestamp when Amplitude received the event"
       - name: global_user_properties
-        description: "JSON object containing global user properties"
+        description: "JSON object containing global user properties. Not in the Lakeflow Connect export; always null."
       - name: amplitude_attribution_ids
         description: "JSON array of attribution IDs"
 
   - name: stg_airbyte_source__amplitude_api_events_list
     description: "Staging model for Amplitude Events List stream - contains metadata about tracked events"
     columns:
-      - name: _airbyte_raw_id
-        description: "Airbyte internal unique identifier for the raw record"
-        tests:
-          - not_null
-          - unique
-      - name: _airbyte_extracted_at
-        description: "Timestamp when the record was extracted from Amplitude API"
-        tests:
-          - not_null
-      - name: _airbyte_meta
-        description: "Airbyte metadata containing sync information"
-        tests:
-          - not_null
-      - name: _airbyte_generation_id
-        description: "Airbyte generation ID for tracking data lineage"
-        tests:
-          - not_null
       - name: id
-        description: "Unique identifier for the event in Amplitude"
-        tests:
-          - not_null
-          - unique
+        description: "Not in the Lakeflow Connect export; always null."
       - name: name
         description: "Name of the event type"
         tests:
@@ -443,38 +338,21 @@ models:
       - name: display
         description: "Display name for the event in charts"
       - name: autohidden
-        description: "Whether the event is automatically hidden"
+        description: "Whether the event is automatically hidden. Not in the Lakeflow Connect export; always null."
       - name: non_active
         description: "Whether the event is considered non-active"
       - name: flow_hidden
         description: "Whether the event is hidden in flow charts"
       - name: in_waitroom
-        description: "Whether the event is in the waitroom"
+        description: "Whether the event is in the waitroom. Not in the Lakeflow Connect export; always null."
       - name: totals_delta
-        description: "Change in totals since last update"
+        description: "Change in totals since last update. Not in the Lakeflow Connect export; always null."
       - name: clusters_hidden
-        description: "Whether the event is hidden in cluster analysis"
+        description: "Whether the event is hidden in cluster analysis. Not in the Lakeflow Connect export; always null."
 
   - name: stg_airbyte_source__amplitude_taxonomy_event_type
     description: "Staging model for the Amplitude Govern taxonomy stream - one row per event_type with human-curated metadata. category is flattened to its name and tags is parsed to an array in this layer."
     columns:
-      - name: _airbyte_raw_id
-        description: "Airbyte internal unique identifier for the raw record"
-        tests:
-          - not_null
-          - unique
-      - name: _airbyte_extracted_at
-        description: "Timestamp when the record was extracted from the Amplitude API"
-        tests:
-          - not_null
-      - name: _airbyte_meta
-        description: "Airbyte metadata containing sync information"
-        tests:
-          - not_null
-      - name: _airbyte_generation_id
-        description: "Airbyte generation ID for tracking data lineage"
-        tests:
-          - not_null
       - name: event_type
         description: "Amplitude event name. Primary key for the taxonomy stream."
         tests:

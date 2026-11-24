@@ -1,26 +1,21 @@
 with
-    source as (
-        select * from {{ source("airbyte_source", "amplitude_api_events_list") }}
-    ),
+    source as (select * from {{ source("amplitude_ingestion", "events_list") }}),
     renamed as (
         select
-            {{ adapter.quote("_airbyte_raw_id") }},
-            {{ adapter.quote("_airbyte_extracted_at") }},
-            {{ adapter.quote("_airbyte_meta") }},
-            {{ adapter.quote("_airbyte_generation_id") }},
-            {{ adapter.quote("id") }},
-            {{ adapter.quote("name") }},
-            {{ adapter.quote("value") }},
-            {{ adapter.quote("hidden") }},
-            {{ adapter.quote("totals") }},
-            {{ adapter.quote("deleted") }},
-            {{ adapter.quote("display") }},
-            {{ adapter.quote("autohidden") }},
-            {{ adapter.quote("non_active") }},
-            {{ adapter.quote("flow_hidden") }},
-            {{ adapter.quote("in_waitroom") }},
-            {{ adapter.quote("totals_delta") }},
-            {{ adapter.quote("clusters_hidden") }}
+            -- The new export carries no numeric id; name always equalled value.
+            cast(null as decimal(38, 10)) as id,
+            value as name,
+            value,
+            hidden,
+            cast(totals as decimal(38, 10)) as totals,
+            deleted,
+            display,
+            cast(null as boolean) as autohidden,
+            non_active,
+            flow_hidden,
+            cast(null as boolean) as in_waitroom,
+            cast(null as decimal(38, 10)) as totals_delta,
+            cast(null as boolean) as clusters_hidden
 
         from source
     )

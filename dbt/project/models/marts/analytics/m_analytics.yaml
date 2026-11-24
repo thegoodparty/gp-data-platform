@@ -4189,7 +4189,7 @@ models:
       - name: gp_api_loaded_at
         description: Latest gp-api user load.
       - name: amplitude_loaded_at
-        description: Latest Amplitude event load.
+        description: Latest Amplitude event upload (server_upload_time).
       - name: hubspot_loaded_at
         description: Latest HubSpot engagements load.
       - name: stripe_loaded_at

@@ -1,17 +1,10 @@
 with
     source as (
-        select *
-        from {{ source("airbyte_source", "amplitude_api_average_session_length") }}
+        select * from {{ source("amplitude_ingestion", "average_session_length") }}
     ),
     renamed as (
         select
-            {{ adapter.quote("_airbyte_raw_id") }},
-            {{ adapter.quote("_airbyte_extracted_at") }},
-            {{ adapter.quote("_airbyte_meta") }},
-            {{ adapter.quote("_airbyte_generation_id") }},
-            {{ adapter.quote("date") }},
-            {{ adapter.quote("length") }}
-
+            cast(date as timestamp) as date, cast(length as decimal(38, 10)) as length
         from source
     )
 select *
