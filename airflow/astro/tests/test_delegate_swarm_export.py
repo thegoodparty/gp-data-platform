@@ -11,24 +11,32 @@ from unittest.mock import MagicMock
 
 import pytest
 
-# Stub the runtime modules that are not importable, so this collects in the airflow env, the dbt env
-# or bare. Only the genuinely missing ones are stubbed: replacing a module that is present poisons
-# `sys.modules` for every later test file in the same process, and the DAG suites import real Airflow
-# at collection time (which is exactly what makes them worth running).
-_STUBS = (
-    "airflow",
-    "airflow.sdk",
+# Stub only what is genuinely unusable, so this collects in the airflow env, the dbt env or bare.
+# Replacing a module that is present poisons `sys.modules` for every later test file in the same
+# process, and the DAG suites import real Airflow at collection time, which is exactly what makes
+# them worth running.
+#
+# `airflow.sdk` is tested for the two names this suite's import chain reaches for rather than for the
+# module alone: `databricks_utils` does `from airflow.sdk import BaseHook, Variable`, so an env whose
+# `airflow.sdk` imports but lacks them fails collection, not the check.
+_STUBBED_PACKAGES = (
     "databricks",
     "databricks.sql",
     "databricks.sql.client",
     "databricks.sdk",
     "databricks.sdk.core",
 )
-for _mod in _STUBS:
+for _mod in _STUBBED_PACKAGES:
     try:
         __import__(_mod)
     except ImportError:
         sys.modules[_mod] = MagicMock()
+
+try:
+    from airflow.sdk import BaseHook, Variable  # noqa: F401
+except ImportError:
+    sys.modules["airflow"] = MagicMock()
+    sys.modules["airflow.sdk"] = MagicMock()
 
 from include.custom_functions.delegate_swarm_export import (  # noqa: E402
     SESSION_COST,
