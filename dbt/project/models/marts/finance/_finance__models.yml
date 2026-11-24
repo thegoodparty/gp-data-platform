@@ -266,7 +266,8 @@ models:
         description: >
           `person` when the spend belongs to a person, `agent` for a non-human actor, and
           `unattributed` for spend that belongs to nobody. Present so that an unattributed bucket
-          is never mistaken for a person in a list.
+          is never mistaken for a person in a list. `agent` arrives with the delegate swarm arm;
+          no Phase 1 source produces it.
         data_tests:
           - not_null
       - name: attribution
@@ -827,3 +828,37 @@ unit_tests:
         - {usage_date: "2026-11-17", model: model-b, person_email: "test.user@goodparty.org", request_count: 2, error_count: 2, unpriced_request_count: 0, total_tokens: 0, cost_usd: 0}
         # A request with no identity at all lands here instead of being dropped.
         - {usage_date: "2026-11-17", model: model-c, person_email: unattributed, request_count: 1, error_count: 0, unpriced_request_count: 0, total_tokens: 10, cost_usd: 0.5}
+
+  # The arm has no read time when a report has never loaded. least() skips a null
+  # argument, so a bare least() would hand an empty seat report the org report's
+  # stamp and publish a completeness date the arm has not earned. Both freshness
+  # columns must be null here.
+  - name: anthropic_daily_usage_has_no_anchor_when_the_seat_report_is_empty
+    model: anthropic_daily_usage
+    given:
+      - input: ref('stg_airbyte_source__anthropic_api_cost_report')
+        format: sql
+        rows: |
+          select
+              timestamp '2026-11-15 00:00:00' as bucket_start,
+              timestamp '2026-11-16 00:00:00' as bucket_end,
+              cast(10.00 as decimal(20, 6)) as amount,
+              cast(null as bigint) as requests,
+              timestamp '2026-11-16 20:25:00' as _airbyte_extracted_at
+      - input: ref('stg_airbyte_source__anthropic_api_user_cost_report')
+        format: sql
+        rows: |
+          select
+              timestamp '2026-11-15 00:00:00' as bucket_start,
+              timestamp '2026-11-16 00:00:00' as bucket_end,
+              'u1' as user_id,
+              cast('test.user@goodparty.org' as string) as user_email,
+              cast(10.00 as decimal(20, 6)) as amount,
+              cast(null as bigint) as requests,
+              timestamp '2026-11-16 20:25:00' as _airbyte_extracted_at
+          where false
+    expect:
+      rows:
+        # The whole org total falls to unattributed, and neither freshness column
+        # is claimed.
+        - {usage_date: "2026-11-15", person_email: unattributed, is_unattributed: true, cost_usd: 10, request_count: null, source_loaded_at: null, source_complete_through: null}

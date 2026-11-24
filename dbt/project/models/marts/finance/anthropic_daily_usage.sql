@@ -35,10 +35,18 @@ with
     -- The arm has one read time, taken as the earlier of the two reports: a day
     -- where only one of them was re-read sits on a stale half, and a per-row
     -- stamp would report the day's own load rather than whether the feed is
-    -- still running.
+    -- still running. Null when either report has never loaded: least() skips a
+    -- null argument rather than propagating it, so a bare least() would let an
+    -- empty seat report inherit the org report's stamp and claim an anchor the
+    -- arm has not earned.
     arm_anchor as (
 
-        select least(org_loaded.loaded_at, seat_loaded.loaded_at) as source_loaded_at
+        select
+            case
+                when org_loaded.loaded_at is null or seat_loaded.loaded_at is null
+                then null
+                else least(org_loaded.loaded_at, seat_loaded.loaded_at)
+            end as source_loaded_at
         from org_loaded
         cross join seat_loaded
 
@@ -80,8 +88,9 @@ with
 
     -- Driven from the org totals with the seat side defaulting to zero, so a day
     -- with no seat rows still gets its row. Both sides are already at cents, and
-    -- a day whose difference is exactly zero has nothing left to attribute.
-    residual_calc as (
+    -- a day whose difference is exactly zero has nothing left to attribute, so
+    -- those rows are dropped where this is read.
+    residual as (
 
         select
             org_daily.usage_date,
@@ -92,8 +101,6 @@ with
         left join seat_totals on org_daily.usage_date = seat_totals.usage_date
 
     ),
-
-    residual as (select usage_date, cost_usd from residual_calc where cost_usd <> 0),
 
     all_rows as (
 
@@ -117,6 +124,7 @@ with
             -- be a claim a sum would hide.
             cast(null as bigint) as request_count
         from residual
+        where cost_usd <> 0
 
     )
 
