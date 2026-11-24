@@ -8,7 +8,7 @@ with
     -- loader replaces them, so a company unlinked since then still shows. Kept
     -- here rather than in the history table, which stays Lakeflow-pure.
     frozen_associations as (
-        select id, companies
+        select cast(id as string) as id, companies
         from {{ source("airbyte_source", "hubspot_api_contacts") }}
         where companies is not null and trim(companies) not in ('', '[]')
     )
@@ -38,13 +38,14 @@ select
 from history
 left join frozen_associations on history.id = frozen_associations.id
 -- On the resolved row, not the raw JSON: a Lakeflow row has no `properties`, and
--- dsar_not_suppressed lets a NULL identifier pass.
+-- dsar_not_suppressed lets a NULL identifier pass. All three are qualified because
+-- the bridge joins a second relation, so a bare id would be ambiguous.
 where
     {{
         dsar_first_party_not_suppressed(
-            "id",
+            "history.id",
             "hs_contact_id",
-            "email",
-            "phone",
+            "history.email",
+            "history.phone",
         )
     }}
