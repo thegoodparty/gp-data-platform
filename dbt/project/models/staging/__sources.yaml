@@ -1852,6 +1852,65 @@ sources:
               meta:
                 sensitive: identifier
 
+  # Tables the companion loader lands beside Lakeflow's, in the same schema, for the
+  # objects Lakeflow Connect cannot reach. Every table is prefixed `companion_` so it
+  # cannot collide with a Lakeflow table: a full refresh writes by table name, so a
+  # shared name would let one producer overwrite the other's table.
+  - name: hubspot_companion
+    database: "{{ var('hubspot_companion_database', 'raw') }}"
+    schema: "{{ var('hubspot_companion_schema', 'hubspot') }}"
+    description: >
+      HubSpot objects and associations landed by the companion loader DAGs, which cover
+      what Lakeflow Connect cannot: custom objects, and associations, which the Lakeflow
+      activity and contact tables do not carry. Both parts of the location are vars because
+      `raw` has no `_dev` sibling: production lands `raw.hubspot`, and a dev or CI run lands
+      `dev.hubspot`. No freshness config: these tables gain rows only when the loader runs,
+      and a full sweep on every run means a table that has stopped growing says nothing
+      about the object.
+    config:
+      freshness: null
+
+    tables:
+      - name: companion_office_holders
+        description: >
+          One row per Office Holder record per run, the full sweep the loader makes every
+          time. Append-only and keyed on the run id, because a record's links are read in
+          separate calls from the record itself and the loader cannot land both in one
+          statement. `stg_hubspot_companion__office_holders` reads the newest run that has a
+          completion marker in companion_office_holders_runs.
+        columns:
+          - name: run_id
+            description: The Airflow run that landed this snapshot of the record.
+          - name: record_id
+            description: The HubSpot Office Holder record id.
+          # The office's own email and phone are CRM data for the Serve sales workflow.
+          # Both declarations are here on purpose: `config.meta.sensitive` is what the
+          # source-tag hook reads, and it is inert until that hook's scope list names this
+          # schema; `databricks_tags` matches how the staging model declares the same
+          # columns. The staging tag is the one protecting them meanwhile.
+          - name: office_email
+            databricks_tags:
+              sensitive: identifier
+            config:
+              meta:
+                sensitive: identifier
+          - name: office_phone
+            databricks_tags:
+              sensitive: identifier
+            config:
+              meta:
+                sensitive: identifier
+      - name: companion_office_holders_runs
+        description: >
+          One row per completed Office Holder sweep, written after the run's last record
+          row. Its presence is what makes a run's snapshot readable, so a run that dies
+          halfway leaves the previous complete snapshot in force.
+        columns:
+          - name: run_id
+            description: The Airflow run id the marker completes.
+          - name: completed_at
+            description: When the marker was written, and what orders two complete runs.
+
   - name: model_predictions
     schema: model_predictions
     description: Raw data loaded from model predictions
