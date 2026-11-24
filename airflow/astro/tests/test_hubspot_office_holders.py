@@ -210,7 +210,7 @@ def test_a_link_carrying_two_types_yields_one_id():
                 "from": {"id": "900"},
                 "to": [
                     {
-                        "toObjectId": 149656527718,
+                        "toObjectId": 555000111,
                         "associationTypes": [
                             {"category": "USER_DEFINED", "typeId": 76, "label": "Office Held"},
                             {"category": "HUBSPOT_DEFINED", "typeId": 71, "label": None},
@@ -221,7 +221,7 @@ def test_a_link_carrying_two_types_yields_one_id():
         ]
     }
 
-    assert linked_ids(body) == {"900": ["149656527718"]}
+    assert linked_ids(body) == {"900": ["555000111"]}
 
 
 def test_a_link_carrying_only_the_unlabeled_type_is_kept():
