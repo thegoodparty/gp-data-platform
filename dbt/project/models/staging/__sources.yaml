@@ -1591,12 +1591,12 @@ sources:
   - name: lakeflow_source
     schema: "{{ var('lakeflow_hubspot_schema', 'lakeflow_source_dev') }}"
     description: >
-      Tables landed by Databricks Lakeflow Connect. Managed pipelines, not dbt,
-      and a full refresh of one clears it first, and the activity tables carry no
-      associations at all, so anything HubSpot has dropped or linked must live in
-      our own layer. The schema is a var so production can point at its own once
-      slice D decides it; until then every target reads the dev schema. No
-      loaded_at_field or freshness, because there is no loader timestamp column.
+      Tables landed by Databricks Lakeflow Connect. Managed pipelines, not dbt, and
+      a full refresh of one clears it first, so anything HubSpot has dropped or
+      linked must live in our own layer. The schema is a var so production can
+      point at its own once slice D decides it; until then every target reads the
+      dev schema. No loaded_at_field or freshness, because there is no loader
+      timestamp column. The activity tables carry no associations at all.
 
       contacts, companies and owners are current state only, so a merged-away or
       deleted record is absent; int__hubspot_contacts_history and
