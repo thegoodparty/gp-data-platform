@@ -154,7 +154,7 @@ with
             -- Tagged from 2026-09-29. Earlier events are Win by default, because
             -- before then Serve had no outreach of its own beyond polls.
             if(event_properties:product::string = 'serve', 'serve', 'win') as product
-        from {{ ref("stg_airbyte_source__amplitude_api_events") }}
+        from {{ ref("stg_amplitude_ingestion__events") }}
         where
             try_cast(user_id as bigint) is not null
             and event_type in (

@@ -29,7 +29,7 @@ import pandas as pd
 # ``ref()``: this module runs outside dbt (notebooks / ad-hoc), where ``ref()`` can
 # resolve to stale dev artifacts (analytics-process skill's references/methodology.md).
 # Repoint these for a dev/test catalog.
-EVENTS_TABLE = "goodparty_data_catalog.dbt.stg_airbyte_source__amplitude_api_events"
+EVENTS_TABLE = "goodparty_data_catalog.dbt.stg_amplitude_ingestion__events"
 USERS_WIN_CANDIDACY = "goodparty_data_catalog.mart_analytics.users_win_candidacy"
 EVENT_TAXONOMY = "goodparty_data_catalog.dbt.int__amplitude_event_catalog"
 

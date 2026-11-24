@@ -45,7 +45,7 @@ population:
     Upstream, with the reason:
       dbt.m_election_api__race / __position / __projected_turnout: projected turnout, which
         no mart carries.
-      dbt.stg_airbyte_source__amplitude_api_events + gp_api_db_outreach / voter_file_filter /
+      dbt.stg_amplitude_ingestion__events + gp_api_db_outreach / voter_file_filter /
         chat tables: the DATA-2690 feature-area definitions, kept so "acted in an area" means
         the same thing as in DATA-2690 (mart_analytics.user_feature_use has no per-window
         action-days).

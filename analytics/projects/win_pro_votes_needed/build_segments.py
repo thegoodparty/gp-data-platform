@@ -23,7 +23,7 @@ def segments_sql() -> str:
 with {population_sql()},
 team as (
   select try_cast(user_id as bigint) as user_id, count(*) as team_invites
-  from {CAT}.dbt.stg_airbyte_source__amplitude_api_events
+  from {CAT}.dbt.stg_amplitude_ingestion__events
   where event_type = 'Team - Member Invited'
   group by 1
 ),

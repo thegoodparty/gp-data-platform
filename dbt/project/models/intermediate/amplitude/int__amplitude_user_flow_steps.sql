@@ -259,7 +259,7 @@ with
             s.step_order,
             s.step,
             min(e.event_time) as step_at
-        from {{ ref("stg_airbyte_source__amplitude_api_events") }} as e
+        from {{ ref("stg_amplitude_ingestion__events") }} as e
         join all_steps as s on e.event_type = s.event_type
         where
             e.event_time >= s.flow_launched_on

@@ -45,7 +45,7 @@ population:
   source_model: |
     goodparty_data_catalog.mart_analytics.users_win_candidacy (population, election dates,
     Pro, office level), users_win_base (activation), user journey wide table (has run before,
-    election_year_count), stg_airbyte_source__amplitude_api_events (events), and raw gp-api
+    election_year_count), stg_amplitude_ingestion__events (events), and raw gp-api
     tables in goodparty_data_catalog.airbyte_source: gp_api_db_outreach, gp_api_db_voter_file_filter,
     gp_api_db_chat_conversation, gp_api_db_chat_message, gp_api_db_experiment_run,
     gp_api_db_website, gp_api_db_campaign, gp_api_db_campaign_position.

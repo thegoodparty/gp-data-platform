@@ -90,7 +90,7 @@ users as (
 act_ev as (
     select cast(user_id as bigint) as user_id,
            sum(case when get_json_object(event_properties, '$.method') = 'unknown' then 0 else 1 end) as non_legacy_ev
-    from goodparty_data_catalog.dbt.stg_airbyte_source__amplitude_api_events
+    from goodparty_data_catalog.dbt.stg_amplitude_ingestion__events
     where event_type in ('Voter Outreach - Campaign Completed', 'Outreach - Campaign Completed',
                          'Voter Outreach - Campaign Scheduled', 'Outreach - Phone Banking: Complete',
                          'Door Knocking - Door Logged', 'Outreach - Door Knocking Door Logged',

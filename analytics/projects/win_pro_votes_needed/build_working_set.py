@@ -178,7 +178,7 @@ ev as (
     end as area,
     case when e.event_type in ({ACTION_EVENTS}) then 1 else 0 end as act
   from pop p
-  join {CAT}.dbt.stg_airbyte_source__amplitude_api_events e
+  join {CAT}.dbt.stg_amplitude_ingestion__events e
     on try_cast(e.user_id as bigint) = p.user_id and e.event_time >= p.ws and e.event_time < p.we
    and e.event_time <= timestamp'{run_ts}'
   left join {CAT}.dbt.int__amplitude_event_catalog cat on cat.event_type = e.event_type
@@ -226,7 +226,7 @@ amp as (
       max(case when event_type like '%Campaign Completed' then try_cast(event_properties:recipientcount as bigint) end),
       max(try_cast(event_properties:recipientcount as bigint))
     ) as recipient_count
-  from {CAT}.dbt.stg_airbyte_source__amplitude_api_events
+  from {CAT}.dbt.stg_amplitude_ingestion__events
   where event_type in ('Voter Outreach - Campaign Completed', 'Outreach - Campaign Completed',
                        'Voter Outreach - Campaign Scheduled')
   group by 1
