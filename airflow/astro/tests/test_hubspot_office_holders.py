@@ -96,6 +96,19 @@ def test_the_request_names_all_31_custom_properties():
     assert len(set(OFFICE_HOLDER_PROPERTIES)) == 31
 
 
+def test_the_landing_helpers_reject_a_dotted_schema():
+    """`raw.hubspot` is a catalog and a schema, not a schema name: a dotted value has to be
+    two Variables or the DDL raises before it writes anything."""
+    from include.custom_functions.hubspot_office_holders import landing_relation
+
+    with pytest.raises(ValueError, match="not a valid SQL identifier"):
+        landing_relation("raw", "hubspot.companion_office_holders", "x")
+
+    assert landing_relation("raw", "hubspot", "companion_office_holders") == (
+        "`raw`.`hubspot`.`companion_office_holders`"
+    )
+
+
 def test_the_two_unique_keys_and_the_display_name_are_requested():
     for name in ("gp_api_elected_office_id", "gp_elected_official_term_id", "name"):
         assert name in OFFICE_HOLDER_PROPERTIES
@@ -295,6 +308,76 @@ def test_fetch_links_fails_the_run_when_a_batch_reports_an_error():
 
     with pytest.raises(HubSpotSweepError, match="refusing to land a partial link set"):
         fetch_links(session, TOKEN, "contacts", ["900", "901"])
+
+
+def test_a_no_associations_error_is_recorded_as_an_explicit_empty_array():
+    """HubSpot answers an unlinked input with an error entry rather than an empty `to` list on
+    some association reads. Treating that as a failure would stall every sweep over one
+    unlinked record, so the record gets an explicit empty array instead."""
+    session = FakeSession(
+        [
+            FakeResponse(
+                status_code=207,
+                body={
+                    "results": [{"from": {"id": "900"}, "to": [{"toObjectId": 1, "associationTypes": []}]}],
+                    "errors": [
+                        {
+                            "category": "VALIDATION_ERROR",
+                            "subCategory": "crm.associations." + "NO_ASSOCIATIONS_FOUND",
+                            "context": {"fromObjectId": ["901"]},
+                        }
+                    ],
+                },
+            )
+        ]
+    )
+
+    assert fetch_links(session, TOKEN, "companies", ["900", "901"]) == {"900": ["1"], "901": []}
+
+
+def test_a_no_associations_error_for_every_input_still_completes():
+    """The companies direction is the one where an unlinked record is normal, since a record
+    links to at most one Company."""
+    session = FakeSession(
+        [
+            FakeResponse(
+                status_code=207,
+                body={
+                    "results": [],
+                    "errors": [
+                        {
+                            "category": "VALIDATION_ERROR",
+                            "subCategory": "crm.associations.NO_ASSOCIATIONS_FOUND",
+                            "context": {"fromObjectId": ["900", "901"]},
+                        }
+                    ],
+                },
+            )
+        ]
+    )
+
+    assert fetch_links(session, TOKEN, "companies", ["900", "901"]) == {"900": [], "901": []}
+
+
+def test_an_error_other_than_no_associations_still_fails_the_batch():
+    """The relaxation is only for the no-links shape; a batch that could not be read is not a
+    claim that those records have no links."""
+    session = FakeSession(
+        [
+            FakeResponse(
+                status_code=207,
+                body={
+                    "results": [],
+                    "errors": [
+                        {"category": "VALIDATION_ERROR", "subCategory": "crm.associations.INVALID_ID"}
+                    ],
+                },
+            )
+        ]
+    )
+
+    with pytest.raises(HubSpotSweepError, match="refusing to land a partial link set"):
+        fetch_links(session, TOKEN, "contacts", ["900"])
 
 
 def test_fetch_links_rejects_an_unknown_direction():

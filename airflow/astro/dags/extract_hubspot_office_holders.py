@@ -36,10 +36,14 @@ page loop plus one association batch series per direction.
 ### Variables
 
 - `databricks_conn_id` — the Variable naming the Databricks connection.
-- `databricks_catalog` — the Unity Catalog catalog.
-- `hubspot_companion_schema` — the landing schema. Production lands `raw.hubspot`; a dev or
-  CI deployment lands `dev.hubspot`, because `raw` has no `_dev` sibling and one catalog is
-  shared, so the schema is what keeps a dev run off production data.
+- `hubspot_companion_catalog` / `hubspot_companion_schema` — where the loader lands, catalog
+  and schema separately. Production is catalog `raw`, schema `hubspot`. The catalog is its
+  own Variable rather than the shared `databricks_catalog`, because the companion tables
+  live beside Lakeflow's in `raw`, and pointing this at the catalog the other DAGs land
+  dbt-readable copies in would put the rows where the `hubspot_companion` source never looks.
+  A dev or CI deployment lands catalog `dev`, schema `hubspot`, because `raw` has no `_dev`
+  sibling, so the pair is what keeps a dev run off production data. They mirror the
+  `hubspot_companion_database` and `hubspot_companion_schema` vars on the dbt source.
 - `hubspot_companion_loader_token` — the read-only loader key. Read at task runtime and
   nowhere else.
 
@@ -72,6 +76,12 @@ from pendulum import datetime, duration
 t_log = logging.getLogger("airflow.task")
 
 TOKEN_VARIABLE = "hubspot_companion_loader_token"
+# The loader's own location Variables, not the shared `databricks_catalog` one. The landing
+# is in the `raw` catalog, whose tables a Lakeflow full refresh also writes, so pointing this
+# at the catalog the other DAGs land dbt-readable copies in would put the rows somewhere the
+# dbt source never looks. They mirror the `hubspot_companion_database` and
+# `hubspot_companion_schema` vars the dbt source declares.
+CATALOG_VARIABLE = "hubspot_companion_catalog"
 SCHEMA_VARIABLE = "hubspot_companion_schema"
 
 # The cadence is an owner decision, not a property of the loader, so it comes from the
@@ -123,7 +133,7 @@ def extract_hubspot_office_holders():
                 connection,
                 session,
                 Variable.get(TOKEN_VARIABLE),
-                Variable.get("databricks_catalog").strip(),
+                Variable.get(CATALOG_VARIABLE).strip(),
                 Variable.get(SCHEMA_VARIABLE).strip(),
                 run_id,
                 dry_run=dry_run,

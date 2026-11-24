@@ -456,12 +456,16 @@ def fetch_links(
         body = request_json(
             session, "POST", path, token, body={"inputs": [{"id": record_id} for record_id in batch]}
         )
-        errors = body.get("errors") or []
-        if errors:
-            first = errors[0] if isinstance(errors, list) else errors
+        # A record with no links is an error entry rather than an empty `to` list on some
+        # HubSpot association reads, so those are recorded as "no links" for the ids they
+        # name and everything else still fails the run. Guessing the other way would either
+        # fail every sweep forever over an unlinked record or silently claim no links.
+        unexpected = record_unlinked_errors(body, to_object_type, linked)
+        if unexpected:
+            first = unexpected[0] if isinstance(unexpected, list) else unexpected
             summary = first.get("category") if isinstance(first, dict) else str(first)
             raise HubSpotSweepError(
-                f"{to_object_type} association batch failed for {len(errors)} of {len(batch)} ids "
+                f"{to_object_type} association batch failed for {len(unexpected)} of {len(batch)} ids "
                 f"({summary}); refusing to land a partial link set"
             )
         for record_id, ids in linked_ids(body).items():
@@ -470,6 +474,41 @@ def fetch_links(
                 if to_id not in existing:
                     existing.append(to_id)
     return linked
+
+
+# A no-associations answer names the unlinked input under `context.fromObjectId`.
+_NO_ASSOCIATIONS = "NO_ASSOCIATIONS_FOUND"
+
+
+def record_unlinked_errors(
+    body: Mapping[str, Any], to_object_type: str, linked: dict[str, list[str]]
+) -> list:
+    """Record "this record has no links" for the ids a no-associations error names.
+
+    Returns the error entries that are not that shape, which the caller fails on. Written to
+    accept both answers HubSpot gives for an unlinked input, an empty `to` list in `results`
+    (`linked_ids` handles that) and an error entry naming the id, so neither shape can stall
+    every sweep.
+    """
+    raw_errors = body.get("errors") or []
+    errors = raw_errors if isinstance(raw_errors, list) else [raw_errors]
+    unexpected = []
+    for error in errors:
+        if not isinstance(error, dict):
+            unexpected.append(error)
+            continue
+        sub_category = str(error.get("subCategory") or "")
+        if not sub_category.endswith(_NO_ASSOCIATIONS):
+            unexpected.append(error)
+            continue
+        unlinked = (error.get("context") or {}).get("fromObjectId") or []
+        if not isinstance(unlinked, list):
+            unlinked = [unlinked]
+        for record_id in unlinked:
+            if record_id is None:
+                continue
+            linked.setdefault(str(record_id), [])
+    return unexpected
 
 
 def build_landing_rows(

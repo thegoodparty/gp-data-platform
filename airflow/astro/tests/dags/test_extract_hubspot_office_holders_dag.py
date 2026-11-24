@@ -105,8 +105,8 @@ def test_the_run_id_combines_the_dag_run_and_the_attempt():
                     get=Mock(
                         side_effect=lambda name, **kw: {
                             "hubspot_companion_loader_token": "tok",
-                            "databricks_catalog": "goodparty_data_catalog",
-                            "hubspot_companion_schema": "raw.hubspot",
+                            "hubspot_companion_catalog": "raw",
+                            "hubspot_companion_schema": "hubspot",
                         }[name]
                     )
                 ),
@@ -124,7 +124,10 @@ def test_the_run_id_combines_the_dag_run_and_the_attempt():
 
     assert captured["run_id"] == "scheduled__1.2"
     assert captured["token"] == "tok"
-    assert captured["schema"] == "raw.hubspot"
+    # Catalog and schema separately: the landing is `raw.hubspot`, and a single dotted value
+    # would be rejected by the loader's identifier validation.
+    assert captured["catalog"] == "raw"
+    assert captured["schema"] == "hubspot"
     assert captured["dry_run"] is False
     connection.close.assert_called_once()
     session.close.assert_called_once()
@@ -165,3 +168,15 @@ def test_a_dry_run_opens_no_connection():
 
     connect.assert_not_called()
     session.close.assert_called_once()
+
+
+def test_the_loader_reads_its_own_location_variables():
+    """The companion tables live beside Lakeflow's in `raw`, so the loader cannot use the
+    shared `databricks_catalog` Variable, which points at the catalog the other DAGs land
+    dbt-readable copies in. A mismatch here would put the rows where the dbt source never
+    looks."""
+    source = Path(_DAG_FILE).read_text()
+
+    assert 'CATALOG_VARIABLE = "hubspot_companion_catalog"' in source
+    assert 'SCHEMA_VARIABLE = "hubspot_companion_schema"' in source
+    assert 'Variable.get("databricks_catalog")' not in source
