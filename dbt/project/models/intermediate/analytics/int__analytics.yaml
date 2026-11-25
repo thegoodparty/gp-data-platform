@@ -203,6 +203,8 @@ models:
           The customer's Stripe email exactly matches a gp-api user's, which
           holds for about three quarters of these rows and most of the stranded
           money. Measured, not acted on: closing it is entity resolution work.
+        databricks_tags:
+          open: "true"
         data_tests:
           - not_null
     data_tests:
