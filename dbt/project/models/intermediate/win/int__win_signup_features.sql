@@ -143,7 +143,7 @@ with
         select u.user_id, e.region, e.country
         from users as u
         inner join
-            {{ ref("stg_airbyte_source__amplitude_api_events") }} as e
+            {{ ref("stg_amplitude__events") }} as e
             on try_cast(e.user_id as bigint) = u.user_id
             and cast(e.event_time as date)
             between date_add(u.signup_date, -1) and date_add(u.signup_date, 30)

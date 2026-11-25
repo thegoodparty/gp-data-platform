@@ -22,7 +22,7 @@ with
             event_properties:product::string as outreach_product,
             coalesce(event_properties:impersonation::string, 'false')
             = 'true' as is_impersonated
-        from {{ ref("stg_airbyte_source__amplitude_api_events") }}
+        from {{ ref("stg_amplitude__events") }}
         where
             try_cast(user_id as bigint) is not null
             and event_time >= '{{ var("product_telemetry_start") }}'

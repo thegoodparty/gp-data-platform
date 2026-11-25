@@ -55,7 +55,7 @@ with
                     )
                 }}
             ) as is_engaged_serve
-        from {{ ref("stg_airbyte_source__amplitude_api_events") }} as e
+        from {{ ref("stg_amplitude__events") }} as e
         where
             try_cast(e.user_id as bigint) is not null
             and e.event_time >= '{{ var("product_telemetry_start") }}'

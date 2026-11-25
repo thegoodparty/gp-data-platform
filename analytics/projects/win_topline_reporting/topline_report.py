@@ -154,7 +154,7 @@ sub_flags AS (
                  AND CAST(e.event_time AS DATE) <= d.d_eval
             THEN CAST(e.event_time AS DATE) END) AS sub_canceled_le_d
     FROM dedup d
-    JOIN goodparty_data_catalog.dbt.stg_airbyte_source__amplitude_api_events e
+    JOIN goodparty_data_catalog.dbt.stg_amplitude__events e
         ON d.user_id = TRY_CAST(e.user_id AS BIGINT)
     WHERE e.event_type IN (
         'Account - Pro Subscription Confirmed',

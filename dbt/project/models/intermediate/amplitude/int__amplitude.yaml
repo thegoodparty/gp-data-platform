@@ -4,7 +4,7 @@ models:
   - name: int__amplitude_user_milestones
     description: >
       User-grain intermediate model that aggregates milestone events from
-      stg_airbyte_source__amplitude_api_events into one row per user_id for
+      stg_amplitude__events into one row per user_id for
       analytics.users metrics. Supports Onboarding CVR, Activated,
       and Active Candidates from a single Amplitude scan.
     columns:
@@ -274,7 +274,7 @@ models:
 
       Grain: One row per user_id x activity_month_year.
 
-      Source: stg_airbyte_source__amplitude_api_events.
+      Source: stg_amplitude__events.
     columns:
       - name: user_id
         description: User identifier (BIGINT, cast from Amplitude string user_id).
@@ -341,7 +341,7 @@ models:
 
       Grain: One row per user_id x activity_month_year.
 
-      Source: stg_airbyte_source__amplitude_api_events.
+      Source: stg_amplitude__events.
     columns:
       - name: user_id
         description: User identifier (BIGINT, cast from Amplitude string user_id).
@@ -490,7 +490,7 @@ models:
       not the user's local Monday. Fine for retention modeling at weekly
       cadence; flagged so reviewers don't second-guess edge-of-week boundaries.
 
-      Source: stg_airbyte_source__amplitude_api_events.
+      Source: stg_amplitude__events.
     columns:
       - name: user_id
         description: User identifier (BIGINT, cast from Amplitude string user_id).
@@ -644,7 +644,7 @@ models:
       move one they already place. govern_category is descriptive metadata only.
 
       Grain: one row per distinct event_type. Sources:
-      stg_airbyte_source__amplitude_api_events (behavior),
+      stg_amplitude__events (behavior),
       stg_airbyte_source__amplitude_taxonomy_event_type (Govern metadata).
     columns:
       - name: event_type
@@ -906,7 +906,7 @@ unit_tests:
           union all select 2, false, true
           union all select 3, true, true
           union all select 4, false, false
-      - input: ref('stg_airbyte_source__amplitude_api_events')
+      - input: ref('stg_amplitude__events')
         format: sql
         rows: |
           select 1 as n, 'Dictation - Started' as event_type, '3' as user_id, '{"product":"serve","activeProduct":"win"}' as event_properties
@@ -943,7 +943,7 @@ unit_tests:
       macros:
         amplitude_event_is_recurrent: "false"
     given:
-      - input: ref('stg_airbyte_source__amplitude_api_events')
+      - input: ref('stg_amplitude__events')
         rows:
           - {event_type: "Win - Opponent Viewed", event_time: "2026-10-01 10:00:00"}
           - {event_type: "Priorities - Priority Added", event_time: "2026-10-01 10:00:00"}
@@ -999,7 +999,7 @@ unit_tests:
       macros:
         amplitude_event_is_recurrent: "false"
     given:
-      - input: ref('stg_airbyte_source__amplitude_api_events')
+      - input: ref('stg_amplitude__events')
         rows:
           - {event_type: "Bad - Tagged", event_time: "2026-10-01 10:00:00"}
           - {event_type: "Empty - Tagged", event_time: "2026-10-01 10:00:00"}

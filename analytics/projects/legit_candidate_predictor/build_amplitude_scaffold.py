@@ -45,7 +45,7 @@ ev as (
          cast(e.event_time as date)         as d,
          e.event_time,
          p.signup_date
-  from goodparty_data_catalog.dbt.stg_airbyte_source__amplitude_api_events e
+  from goodparty_data_catalog.dbt.stg_amplitude__events e
   join pop p on cast(e.user_id as string) = p.user_id
   left join goodparty_data_catalog.dbt.int__amplitude_event_catalog c
     on c.event_type = e.event_type
@@ -126,8 +126,7 @@ if __name__ == "__main__":
         feats,
         "amplitude_family_scaffold",
         key="user_id",
-        source="dbt.stg_airbyte_source__amplitude_api_events x "
-        "int__amplitude_event_catalog (family grain)",
+        source="dbt.stg_amplitude__events x " "int__amplitude_event_catalog (family grain)",
         join="user_id, events windowed [signup, signup+30d]",
         pit_class="A by construction (post-signup behavior) — NEVER enters pass B / " "the analysis filter",
     )

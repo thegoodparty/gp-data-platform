@@ -71,7 +71,7 @@ legacy_only as (
     -- ratified rule excludes self-report but the build only excludes method = 'manual'.
     select cast(user_id as string) as user_id,
            sum(case when get_json_object(event_properties, '$.method') = 'unknown' then 0 else 1 end) as non_legacy_ev
-    from {cat}.dbt.stg_airbyte_source__amplitude_api_events
+    from {cat}.dbt.stg_amplitude__events
     where event_type in ('Voter Outreach - Campaign Completed', 'Outreach - Campaign Completed',
                          'Voter Outreach - Campaign Scheduled', 'Outreach - Phone Banking: Complete',
                          'Door Knocking - Door Logged', 'Outreach - Door Knocking Door Logged',
@@ -98,7 +98,7 @@ corroborated as (
 ),
 amp as (
     select user_id, max(get_json_object(user_properties, '$.officeElectionDate')) as amp_election_date
-    from {cat}.dbt.stg_airbyte_source__amplitude_api_events
+    from {cat}.dbt.stg_amplitude__events
     where event_time >= '2026-01-01' and user_properties like '%officeElectionDate%'
       and user_id in (select cast(user_id as string) from users)
     group by user_id

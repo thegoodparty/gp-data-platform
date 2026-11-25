@@ -132,7 +132,7 @@ population:
     intervals, joined by lowercased email, live mode only, excluding
     incomplete_expired subscriptions); dbt.int__amplitude_user_milestones
     .pro_upgrade_completed_at (secondary Pro-upgrade timing evidence);
-    dbt.stg_airbyte_source__amplitude_api_events, event_types 'Account - Pro
+    dbt.stg_amplitude__events, event_types 'Account - Pro
     Subscription Confirmed' (4th upgrade-signal channel, incl. admin/comped
     grants) and 'Account - Pro Subscription Canceled' (fallback cancel gate)
     - 2026-07-24 amendment.

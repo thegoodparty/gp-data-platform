@@ -10,7 +10,7 @@
         activity_month_year is a DATE month bucket (first day of month).
 
     Source:
-        {{ ref('stg_airbyte_source__amplitude_api_events') }}
+        {{ ref('stg_amplitude__events') }}
 
     Event -> column mapping:
         - Viewed + event_properties:path = '/dashboard/polls'
@@ -40,7 +40,7 @@ with
             max(event_time) as last_activity_at,
             count(*) as poll_view_count,
             count(distinct date(event_time)) as activity_days
-        from {{ ref("stg_airbyte_source__amplitude_api_events") }}
+        from {{ ref("stg_amplitude__events") }}
         where
             event_type = 'Viewed'
             and event_properties:path::string = '/dashboard/polls'

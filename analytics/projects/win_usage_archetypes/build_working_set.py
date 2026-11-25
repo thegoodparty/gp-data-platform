@@ -99,7 +99,7 @@ ev as (
   select p.user_id, e.event_type, e.event_time, date(e.event_time) as d, e.device_type, e.os_name,
     e.event_properties
   from pop p
-  join goodparty_data_catalog.dbt.stg_airbyte_source__amplitude_api_events e
+  join goodparty_data_catalog.dbt.stg_amplitude__events e
     on try_cast(e.user_id as bigint) = p.user_id
    and e.event_time >= p.su and e.event_time < p.we
   where e.event_time >= timestamp'{SIGNUP_FLOOR} 00:00:00'
@@ -314,7 +314,7 @@ ev as (
     end as area,
     case when e.event_type in ({ACTION_EVENTS}) then 1 else 0 end as act
   from pop p
-  join goodparty_data_catalog.dbt.stg_airbyte_source__amplitude_api_events e
+  join goodparty_data_catalog.dbt.stg_amplitude__events e
     on try_cast(e.user_id as bigint) = p.user_id and e.event_time >= p.su and e.event_time < p.we
   left join goodparty_data_catalog.dbt.int__amplitude_event_catalog cat on cat.event_type = e.event_type
   where e.event_time >= timestamp'{SIGNUP_FLOOR} 00:00:00' and not coalesce(cat.is_machine_emitted, false)

@@ -41,9 +41,11 @@ with
         from {{ ref("stg_airbyte_source__gp_api_db_user") }}
     ),
 
+    -- The Amplitude export has no loader column; server_upload_time is when
+    -- Amplitude accepted the event, the nearest stand-in.
     amplitude_load as (
-        select max(_airbyte_extracted_at) as amplitude_loaded_at
-        from {{ ref("stg_airbyte_source__amplitude_api_events") }}
+        select max(server_upload_time) as amplitude_loaded_at
+        from {{ ref("stg_amplitude__events") }}
     ),
 
     -- HubSpot contacts carry no loader column; the engagements stream rides

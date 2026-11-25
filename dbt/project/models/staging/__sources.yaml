@@ -11,47 +11,6 @@ sources:
         error_after: { count: 31, period: day }
 
     tables:
-      - name: amplitude_api_active_users
-        description: raw data load from amplitude api active users
-      - name: amplitude_api_annotations
-        description: raw data load from amplitude api annotations
-      - name: amplitude_api_average_session_length
-        description: raw data load from amplitude api average session length
-      - name: amplitude_api_cohorts
-        description: raw data load from amplitude api cohorts
-      - name: amplitude_api_events
-        columns:
-          - name: ip_address
-            config:
-              meta:
-                sensitive: identifier
-          - name: location_lat
-            config:
-              meta:
-                sensitive: confidential
-          - name: location_lng
-            config:
-              meta:
-                sensitive: confidential
-          - name: adid
-            config:
-              meta:
-                sensitive: confidential
-          - name: idfa
-            config:
-              meta:
-                sensitive: confidential
-          - name: user_properties
-            config:
-              meta:
-                sensitive: confidential
-          - name: event_properties
-            config:
-              meta:
-                sensitive: confidential
-        description: raw data load from amplitude api events
-      - name: amplitude_api_events_list
-        description: raw data load from amplitude api events list
       - name: amplitude_taxonomy_event_type
         description: >
           raw data load from the amplitude govern taxonomy api
@@ -903,6 +862,74 @@ sources:
         # Last loaded 2025-12-02; the feed is no longer syncing and has no
         # downstream consumers, so freshness is disabled to stop the source
         # from going STALE. Source is retained in dbt for now.
+        config:
+          freshness: null
+
+  - name: amplitude
+    database: raw
+    schema: amplitude
+    description: >
+      Amplitude export landed by the Databricks Lakeflow Connect connector, which
+      replaced the paused Airbyte sync. Object-valued columns arrive as
+      map<string, string> with nested values in Python repr; staging rebuilds the
+      JSON text.
+    config:
+      loaded_at_field: "server_upload_time"
+      freshness:
+        warn_after: { count: 2, period: day }
+        error_after: { count: 7, period: day }
+
+    tables:
+      - name: active_users_counts
+        description: Daily active users, one row per segment per day.
+        config:
+          loaded_at_field: "cast(date as timestamp)"
+        # Staging folds segments into a map; a duplicate or null key fails it.
+        data_tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns: [date, segment]
+        columns:
+          - name: segment
+            data_tests:
+              - not_null
+      - name: annotations
+        description: Chart annotations.
+        config:
+          freshness: null
+      - name: average_session_length
+        description: Daily average session length in seconds.
+        config:
+          loaded_at_field: "cast(date as timestamp)"
+      - name: cohorts
+        description: Behavioral cohorts.
+        config:
+          freshness: null
+      - name: events
+        description: Raw Amplitude events export.
+        columns:
+          - name: ip_address
+            config:
+              meta:
+                sensitive: identifier
+          - name: location_lat
+            config:
+              meta:
+                sensitive: confidential
+          - name: location_lng
+            config:
+              meta:
+                sensitive: confidential
+          - name: user_properties
+            config:
+              meta:
+                sensitive: confidential
+          - name: event_properties
+            config:
+              meta:
+                sensitive: confidential
+      - name: events_list
+        description: Event types with their current weekly totals.
         config:
           freshness: null
 

@@ -26,7 +26,7 @@ with
                     "e.event_properties:product::string",
                 )
             }} as is_serve_leg
-        from {{ ref("stg_airbyte_source__amplitude_api_events") }} as e
+        from {{ ref("stg_amplitude__events") }} as e
         where
             e.event_time >= '{{ var("product_telemetry_start") }}'
             and (

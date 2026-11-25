@@ -20,7 +20,7 @@ with
             if(session_id > 0, session_id, null) as session_id,
             event_time,
             cast(date_trunc('month', event_time) as date) as month_start
-        from {{ ref("stg_airbyte_source__amplitude_api_events") }}
+        from {{ ref("stg_amplitude__events") }}
         where
             event_type = 'Viewed'
             and device_id is not null
@@ -46,7 +46,7 @@ with
     -- A device that ever carried a user id on any event, site or product.
     identified_devices as (
         select distinct device_id
-        from {{ ref("stg_airbyte_source__amplitude_api_events") }}
+        from {{ ref("stg_amplitude__events") }}
         where device_id is not null and user_id is not null
     ),
 

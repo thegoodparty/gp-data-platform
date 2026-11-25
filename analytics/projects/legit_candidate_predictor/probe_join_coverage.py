@@ -258,7 +258,7 @@ PROBES["amplitude_device"] = f"""
 with {POP},
 dev as (
   select try_cast(e.user_id as bigint) as user_id, e.device_id
-  from goodparty_data_catalog.dbt.stg_airbyte_source__amplitude_api_events e
+  from goodparty_data_catalog.dbt.stg_amplitude__events e
   join pop p on p.user_id = try_cast(e.user_id as bigint)
   where e.device_id is not null
     and cast(e.event_time as date) between date_add(p.signup_date, -1) and date_add(p.signup_date, 30)
@@ -272,7 +272,7 @@ pre as (
          max(case when e.region is not null then 1 else 0 end) as has_geo_pre
   from dev d
   join pop p2 on p2.user_id = d.user_id
-  join goodparty_data_catalog.dbt.stg_airbyte_source__amplitude_api_events e
+  join goodparty_data_catalog.dbt.stg_amplitude__events e
     on e.device_id = d.device_id
   where e.event_time < cast(p2.signup_date as timestamp)
     and (e.user_id is null or try_cast(e.user_id as bigint) <> d.user_id)
@@ -633,7 +633,7 @@ lab as (
 obs as (select * from lab where signup_date >= date'2025-05-28'),
 ev as (
   select try_cast(e.user_id as bigint) as user_id, e.event_type, e.event_time
-  from goodparty_data_catalog.dbt.stg_airbyte_source__amplitude_api_events e
+  from goodparty_data_catalog.dbt.stg_amplitude__events e
   join obs o on o.user_id = try_cast(e.user_id as bigint)
   where e.session_id <> -1
 ),
