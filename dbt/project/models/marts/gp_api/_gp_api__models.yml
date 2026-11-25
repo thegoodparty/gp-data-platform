@@ -262,6 +262,14 @@ models:
           - dbt_utils.accepted_range:
               arguments:
                 min_value: 18
+      - name: VoterTelephones_CellPhoneFormatted
+        description: L2's formatted cell phone, null unless it is a usable 10-digit number.
+        databricks_tags:
+          sensitive: identifier
+      - name: VoterTelephones_LandlineFormatted
+        description: L2's formatted landline, null unless it is a usable 10-digit number.
+        databricks_tags:
+          sensitive: identifier
 
   - name: gp_api_consumer_only_people
     description: >
@@ -332,6 +340,14 @@ models:
           - dbt_expectations.expect_column_values_to_match_regex:
               arguments:
                 regex: "^[0-9]{4}$"
+      - name: VoterTelephones_CellPhoneFormatted
+        description: L2's formatted cell phone, null unless it is a usable 10-digit number.
+        databricks_tags:
+          sensitive: identifier
+      - name: VoterTelephones_LandlineFormatted
+        description: L2's formatted landline, null unless it is a usable 10-digit number.
+        databricks_tags:
+          sensitive: identifier
 
   - name: gp_api_constituents
     description: >

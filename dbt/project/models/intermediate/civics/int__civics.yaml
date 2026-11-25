@@ -312,6 +312,14 @@ models:
     description: >
       Archived HubSpot contacts from 2026-01-22 snapshot. Source data for civics mart.
     columns:
+      - name: email
+        description: Contact's email address (HubSpot property).
+        databricks_tags:
+          sensitive: identifier
+      - name: phone_number
+        description: Contact's phone number (HubSpot property).
+        databricks_tags:
+          sensitive: identifier
       - name: is_pledged
         description: Whether the candidate has taken the GoodParty pledge
         data_tests:
@@ -344,6 +352,15 @@ models:
       Upstream source for civics candidacy data. Empty strings in verified_candidate
       are converted to nulls at this layer.
     columns:
+      - name: email_contacts
+        description: Contact's email address, taken from the joined contact.
+        databricks_tags:
+          sensitive: identifier
+      - name: phone_number
+        description: >
+          Company phone, falling back to the joined contact's phone number.
+        databricks_tags:
+          sensitive: identifier
       - name: verified_candidate
         description: >
           Verification status from HubSpot. Empty strings converted to nulls.
@@ -607,6 +624,16 @@ models:
           - is_state_abbreviation:
               config:
                 severity: warn
+
+      - name: email
+        description: Candidate's email address (TechSpeed).
+        databricks_tags:
+          sensitive: identifier
+
+      - name: phone_number
+        description: Candidate's phone number (TechSpeed).
+        databricks_tags:
+          sensitive: identifier
 
       - name: created_at
         data_tests:
@@ -1515,10 +1542,17 @@ models:
         data_tests:
           - not_null
 
+      - name: email
+        description: Email address from a BallotReady contact
+        databricks_tags:
+          sensitive: identifier
+
       - name: phone
         description: >
           Canonical phone number, preferring office_phone, then central_phone,
           then any remaining non-null BallotReady phone value
+        databricks_tags:
+          sensitive: identifier
 
       - name: position_name
         description: Raw BallotReady office name
@@ -1755,6 +1789,16 @@ models:
       - name: last_name
         data_tests:
           - not_null
+
+      - name: email
+        description: Latest term's email address from BallotReady.
+        databricks_tags:
+          sensitive: identifier
+
+      - name: phone
+        description: Latest term's canonical phone number from BallotReady.
+        databricks_tags:
+          sensitive: identifier
 
       - name: state
         description: Latest term's U.S. state (2-letter code).
