@@ -64,6 +64,14 @@ models:
           state.
         databricks_tags:
           open: "true"
+      - name: usr_email_is_role_address
+        description: 1 when the email's local part is a generic org mailbox rather than a person.
+        databricks_tags:
+          open: "true"
+      - name: usr_email_has_office_words
+        description: 1 when office or campaign vocabulary appears anywhere in the email address.
+        databricks_tags:
+          open: "true"
       - name: det_n_selfreport_keys
         description: How many of the seven free-text profile fields the user filled in.
         data_tests:

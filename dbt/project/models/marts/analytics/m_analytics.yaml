@@ -2162,6 +2162,8 @@ models:
         description: >
           goodparty / free / custom / missing. The free-domain list is a fixed
           public list, written down before any outcome rate was computed.
+        databricks_tags:
+          open: "true"
         meta:
           pit_class: B
           available_from: "signup"
@@ -2461,6 +2463,8 @@ models:
       - name: usr_phone_present
         description: >
           1 when the user's phone parses to a ten-digit North American number.
+        databricks_tags:
+          open: "true"
         meta:
           pit_class: B
           available_from: "signup"
@@ -2494,6 +2498,8 @@ models:
         description: >
           1 when the local part is a generic org mailbox (info, campaign,
           office, ...) rather than a person.
+        databricks_tags:
+          open: "true"
         meta:
           pit_class: B
           available_from: "signup"
@@ -2510,6 +2516,8 @@ models:
           1 when office or campaign vocabulary appears anywhere in the
           address. Custom campaign domains are the point, so the whole address
           is scanned.
+        databricks_tags:
+          open: "true"
         meta:
           pit_class: B
           available_from: "signup"
@@ -3599,6 +3607,14 @@ models:
           a GoodParty or mailinator email domain, or the admin or sales role, on
           any account of the person. Exclude from every user count. False for
           a signup with no gp_person_id yet, until the person graph rebuilds.
+      - name: hubspot_unmatched_reason
+        description: Why the user reaches no HubSpot contact, from int__user_hubspot_profile. Null when they do.
+        databricks_tags:
+          open: "true"
+      - name: hubspot_email_match_available
+        description: An exact email edge would reach a live contact, from int__user_hubspot_profile.
+        databricks_tags:
+          open: "true"
       - name: record_refreshed_at
         description: When this row was rebuilt.
         data_tests:

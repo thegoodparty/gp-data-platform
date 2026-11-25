@@ -339,6 +339,8 @@ models:
           Why the user reaches no contact. Null when they do. A native id that
           no longer resolves is kept apart from never having had one, because
           the first is a broken link and the second is an absent record.
+        databricks_tags:
+          open: "true"
         data_tests:
           - accepted_values:
               arguments:
