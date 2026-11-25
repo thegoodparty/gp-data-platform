@@ -891,6 +891,11 @@ models:
           does not imply the 2026+ gp_api eligibility gates (BR position,
           vendor corroboration or HubSpot verification).
           See the model-level description for merge mechanics.
+        # Names source systems and nothing personal, and propagation reaches it
+        # from the tagged source ids: a mask cannot return an ARRAY, so without
+        # `open` the whole table fails for a masked reader.
+        databricks_tags:
+          open: "true"
         data_tests:
           - not_null
 
@@ -964,6 +969,12 @@ models:
                   - "Has a Chance"
                   - "Likely to Win"
                   - "Frontrunner"
+      - name: source_systems
+        description: >
+          Array of source systems contributing to this row, passed through from
+          candidacy (see that model for the values).
+        databricks_tags:
+          open: "true"
     data_tests:
       - dbt_utils.expression_is_true:
           name: candidacy_scored_score_label_consistent
@@ -1114,6 +1125,8 @@ models:
           contact; it does not imply the 2026+ gp_api gates (a user with at
           least one campaign).
           See the model-level description for merge mechanics.
+        databricks_tags:
+          open: "true"
         data_tests:
           - not_null
 
@@ -1430,6 +1443,8 @@ models:
           Array of source systems contributing to this row. Possible values:
           'hubspot' (2025 archive only), 'ballotready', 'techspeed', 'ddhq', 'gp_api'.
           See the model-level description for merge mechanics.
+        databricks_tags:
+          open: "true"
         data_tests:
           - not_null
 
@@ -1741,6 +1756,8 @@ models:
           gp_api participation is indicated via membership lookup — 'gp_api' is
           appended to source_systems for any election that any clustered or
           unclustered PD candidacy maps to.
+        databricks_tags:
+          open: "true"
         data_tests:
           - not_null
 
@@ -2122,9 +2139,13 @@ models:
 
       - name: phone
         description: Phone number from BallotReady (BR-only at term grain). TS-enriched contact lives on elected_officials.
+        databricks_tags:
+          sensitive: identifier
 
       - name: email
         description: Email address from BallotReady (BR-only at term grain). TS-enriched contact lives on elected_officials.
+        databricks_tags:
+          sensitive: identifier
 
       - name: office_phone
         description: Office phone number (BR-only)
