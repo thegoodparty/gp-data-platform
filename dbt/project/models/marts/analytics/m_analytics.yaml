@@ -2482,6 +2482,8 @@ models:
           A real 0 means a relocation or a virtual number; an unmapped code is
           null, so a gap in the seed degrades to unknown rather than to a
           false mismatch.
+        databricks_tags:
+          open: "true"
         meta:
           pit_class: B
           available_from: "signup"
