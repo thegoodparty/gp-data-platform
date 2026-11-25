@@ -4135,6 +4135,8 @@ models:
           count toward the public metric is a pending product decision, so
           flag, never exclude (the serve_cohort_exclude_internal_email_orgs
           var flips the filter).
+        databricks_tags:
+          open: "true"
         data_tests:
           - not_null
       - name: is_active_serve_user
