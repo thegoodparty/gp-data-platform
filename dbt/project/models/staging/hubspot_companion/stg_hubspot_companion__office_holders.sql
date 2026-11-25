@@ -1,32 +1,18 @@
--- One row per live HubSpot Office Holder record, read from the companion loader's
--- landing
--- table rather than from HubSpot. The object is a custom object, so Lakeflow has no
--- table
--- for it at all, and this loader is its only path into the warehouse.
+-- One row per live Office Holder, a HubSpot custom object with no Lakeflow
+-- table; this loader is its only path into the warehouse.
 --
--- Reads one run, not all of them: the loader sweeps the whole object every run, so a
--- run's
--- rows are a complete snapshot, and staging reads the newest run that carries a
--- completion
--- marker. A run that died halfway therefore leaves the previous complete snapshot in
--- force
--- and can never shrink the live set. A full snapshot per run also grows the landing
--- table by
--- the record count each run: fine at the object's current size, and worth revisiting
--- with
--- change-only appends if the DATA-2645 feed pushes volume past tens of thousands.
+-- Reads one run: the loader sweeps the whole object, so a run is a complete
+-- snapshot, and this reads the newest run carrying a completion marker. A run
+-- that died halfway leaves the previous snapshot in force. The landing table
+-- grows by the record count per run: fine at this size, worth revisiting with
+-- change-only appends if the feed grows.
 --
--- Live only. A record HubSpot merges away stops being returned by the sweep, and its
--- id also
--- appears in its survivor's `hs_merged_object_ids`; the second check is the guard,
--- since a
--- sweep that started before a merge can still return the absorbed record.
+-- Live only: a merged-away record stops being returned, and its id also appears
+-- in its survivor's `hs_merged_object_ids`. The second check is the guard, since
+-- a sweep that began before a merge can still return the absorbed record.
 --
--- The loader has not necessarily run yet, and this model must still build: a source
--- relation
--- that does not exist yet compiles to an empty, fully typed projection instead of
--- failing the
--- build. The moment the first complete run lands, the real branch takes over.
+-- The loader may not have run yet. A missing source relation compiles to an
+-- empty, typed projection rather than failing the build.
 {%- set landing = source("hubspot_companion", "companion_office_holders") -%}
 {%- set runs = source("hubspot_companion", "companion_office_holders_runs") -%}
 {%- set columns = hubspot_office_holder_columns() -%}
@@ -101,9 +87,8 @@
         resolved as (
             select
                 *,
-                -- `app` first: a record can carry both keys once a merge lands the
-                -- feed's id
-                -- on an app-created record, and the app is the writer that created it.
+                -- `app` first: a merge can land the feed's key on an app-created
+                -- record.
                 case
                     when nullif(trim(gp_api_elected_office_id), '') is not null
                     then 'app'

@@ -105,8 +105,7 @@ def test_the_run_id_combines_the_dag_run_and_the_attempt():
                     get=Mock(
                         side_effect=lambda name, **kw: {
                             "hubspot_companion_loader_token": "tok",
-                            "hubspot_companion_catalog": "raw",
-                            "hubspot_companion_schema": "hubspot",
+                            "hubspot_companion_landing_schema": "raw.hubspot",
                         }[name]
                     )
                 ),
@@ -153,7 +152,14 @@ def test_a_dry_run_opens_no_connection():
         patch.dict(
             globals_,
             {
-                "Variable": MagicMock(get=Mock(return_value="x")),
+                "Variable": MagicMock(
+                    get=Mock(
+                        side_effect=lambda name, **kw: {
+                            "hubspot_companion_loader_token": "tok",
+                            "hubspot_companion_landing_schema": "raw.hubspot",
+                        }[name]
+                    )
+                ),
                 "get_current_context": Mock(
                     return_value={
                         "params": {"dry_run": True},
@@ -170,13 +176,14 @@ def test_a_dry_run_opens_no_connection():
     session.close.assert_called_once()
 
 
-def test_the_loader_reads_its_own_location_variables():
+def test_the_loader_reads_one_location_variable():
     """The companion tables live beside Lakeflow's in `raw`, so the loader cannot use the
-    shared `databricks_catalog` Variable, which points at the catalog the other DAGs land
-    dbt-readable copies in. A mismatch here would put the rows where the dbt source never
-    looks."""
+    shared `databricks_catalog` Variable. One `catalog.schema` Variable rather than a pair,
+    so an environment cannot be half-pointed at production, and so it matches the sibling
+    companion DAG."""
     source = Path(_DAG_FILE).read_text()
 
-    assert 'CATALOG_VARIABLE = "hubspot_companion_catalog"' in source
-    assert 'SCHEMA_VARIABLE = "hubspot_companion_schema"' in source
+    assert 'LANDING_SCHEMA_VARIABLE = "hubspot_companion_landing_schema"' in source
     assert 'Variable.get("databricks_catalog")' not in source
+    assert "hubspot_companion_catalog" not in source
+    assert 'hubspot_companion_schema"' not in source

@@ -552,6 +552,22 @@ def _validate_identifier(name: str, value: str) -> str:
     return value
 
 
+def split_landing_schema(value: str) -> tuple[str, str]:
+    """Split the `catalog.schema` landing Variable into its two validated parts.
+
+    One Variable rather than a catalog and a schema pair, so an environment cannot be
+    half-pointed at production, and so this matches the sibling companion DAG. The name is
+    in the error because a malformed Variable is fixed in the Airflow UI.
+    """
+    parts = (value or "").strip().split(".")
+    if len(parts) != 2 or not all(parts):
+        raise ValueError(f"hubspot_companion_landing_schema must be `catalog.schema`, got {value!r}")
+    return (
+        _validate_identifier("catalog", parts[0]),
+        _validate_identifier("schema", parts[1]),
+    )
+
+
 def landing_relation(catalog: str, schema: str, table: str) -> str:
     _validate_identifier("catalog", catalog)
     _validate_identifier("schema", schema)
@@ -563,6 +579,12 @@ def ensure_landing_tables(connection, catalog: str, schema: str) -> None:
 
     The schema is created here rather than assumed because `raw` has no `_dev` sibling: a
     dev deployment writes `dev.hubspot`, which nothing else creates.
+
+    ORDERING: whoever creates a schema owns it. The first production run must therefore come
+    AFTER the cutover creates `raw.hubspot` and runs `alter schema raw.hubspot owner to
+    ingestor`, or this call leaves the loader's own principal as the owner of a production
+    schema. A `CREATE SCHEMA IF NOT EXISTS` against an existing schema is a no-op, so that
+    ordering costs nothing.
     """
     _validate_identifier("catalog", catalog)
     _validate_identifier("schema", schema)

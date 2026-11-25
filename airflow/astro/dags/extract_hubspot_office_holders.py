@@ -36,14 +36,10 @@ page loop plus one association batch series per direction.
 ### Variables
 
 - `databricks_conn_id` — the Variable naming the Databricks connection.
-- `hubspot_companion_catalog` / `hubspot_companion_schema` — where the loader lands, catalog
-  and schema separately. Production is catalog `raw`, schema `hubspot`. The catalog is its
-  own Variable rather than the shared `databricks_catalog`, because the companion tables
-  live beside Lakeflow's in `raw`, and pointing this at the catalog the other DAGs land
-  dbt-readable copies in would put the rows where the `hubspot_companion` source never looks.
-  A dev or CI deployment lands catalog `dev`, schema `hubspot`, because `raw` has no `_dev`
-  sibling, so the pair is what keeps a dev run off production data. They mirror the
-  `hubspot_companion_database` and `hubspot_companion_schema` vars on the dbt source.
+- `hubspot_companion_landing_schema` — `catalog.schema` the companion tables land in.
+  Production is `raw.hubspot`; a dev deployment is `dev.hubspot`, because `raw` has no
+  `_dev` sibling. One Variable rather than a catalog and a schema pair, so an environment
+  cannot be half-pointed at production, and so it matches the sibling companion DAG.
 - `hubspot_companion_loader_token` — the read-only loader key. Read at task runtime and
   nowhere else.
 
@@ -52,6 +48,10 @@ page loop plus one association batch series per direction.
 - `dry_run` — sweep the object and log the counts, write nothing.
 
 The DAG deploys `is_paused_upon_creation=True`: unpausing is the owner-gated activation step.
+
+Unpause only AFTER the cutover creates `raw.hubspot` and hands it to ingestor. The first run
+issues `CREATE SCHEMA IF NOT EXISTS` on its target, and whoever creates a schema owns it, so
+running first would leave the loader's principal owning a production schema.
 
 ### Schedule
 
@@ -70,6 +70,7 @@ from include.custom_functions.hubspot_office_holders import (
     attempt_run_id,
     extract_office_holders,
     make_session,
+    split_landing_schema,
 )
 from pendulum import datetime, duration
 
@@ -80,9 +81,8 @@ TOKEN_VARIABLE = "hubspot_companion_loader_token"
 # is in the `raw` catalog, whose tables a Lakeflow full refresh also writes, so pointing this
 # at the catalog the other DAGs land dbt-readable copies in would put the rows somewhere the
 # dbt source never looks. They mirror the `hubspot_companion_database` and
-# `hubspot_companion_schema` vars the dbt source declares.
-CATALOG_VARIABLE = "hubspot_companion_catalog"
-SCHEMA_VARIABLE = "hubspot_companion_schema"
+# `hubspot_companion_landing_schema` Variable, in `catalog.schema` form.
+LANDING_SCHEMA_VARIABLE = "hubspot_companion_landing_schema"
 
 # The cadence is an owner decision, not a property of the loader, so it comes from the
 # deployment's environment and defaults to once a day. Read at parse time because that is
@@ -129,12 +129,13 @@ def extract_hubspot_office_holders():
 
         session = make_session()
         try:
+            catalog, schema = split_landing_schema(Variable.get(LANDING_SCHEMA_VARIABLE))
             return extract_office_holders(
                 connection,
                 session,
                 Variable.get(TOKEN_VARIABLE),
-                Variable.get(CATALOG_VARIABLE).strip(),
-                Variable.get(SCHEMA_VARIABLE).strip(),
+                catalog,
+                schema,
                 run_id,
                 dry_run=dry_run,
             )
