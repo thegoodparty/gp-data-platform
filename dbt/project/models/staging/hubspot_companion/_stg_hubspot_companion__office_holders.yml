@@ -1,0 +1,138 @@
+version: 2
+
+models:
+  - name: stg_hubspot_companion__office_holders
+    description: >
+      One row per live HubSpot Office Holder record (the Office Holder custom object), read
+      from the companion loader's landing table. The object is a custom object, so Lakeflow
+      Connect has no table for it and this loader is its only path into the warehouse.
+
+      The loader sweeps every record on every run, so one run is a complete snapshot, and this
+      model reads the newest run that carries a completion marker. A partial run never lands a
+      marker, so it leaves the previous complete snapshot in force. It is still one row per
+      record if a run's INSERT was applied twice, because a duplicate within a run resolves to
+      its newest load.
+
+      A deletion drops out because the sweep no longer returns the record, so the snapshot it
+      lands does not contain it.
+    columns:
+      - name: record_id
+        description: The HubSpot record id of the Office Holder. Unique per live record.
+        data_tests:
+          - not_null
+          - unique
+      - name: gp_api_elected_office_id
+        description: >
+          gp-api `elected_office.id`, the key the app upserts on. A blank normalises to null,
+          so "set" means the same thing here as in `origin`. Unique where set, because a
+          duplicate would mean two live records for one product office.
+        data_tests:
+          - unique
+      - name: gp_elected_official_term_id
+        description: >
+          One BallotReady or TechSpeed term, the key the nightly feed upserts on. A blank
+          normalises to null, as above. Unique where set. Expected to be empty until the feed
+          goes live: every record today was created by the app.
+        data_tests:
+          - unique
+      - name: gp_person_id
+        description: >
+          Canonical person id, matching the unique property on Contact. Not unique: one person
+          holds many terms.
+      - name: gp_candidacy_id
+        description: The candidacy this term resulted from, when known.
+      - name: name
+        description: >
+          The seat, built by the app as "<seat> (<state>)". Not a person's name: person facts
+          stay on Contact.
+      - name: status
+        description: >
+          A person's claim on the seat: elected (won, not yet seated), in_office (seated) or
+          former (past).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["elected", "in_office", "former"]
+      - name: position_name
+        description: The position's name as BallotReady or the app reports it.
+      - name: candidate_office
+        description: The office the term is for.
+      - name: office_level
+        description: Level of the office, such as state or local.
+      - name: office_type
+        description: Type of the office, such as executive or legislative.
+      - name: state
+        description: Two-letter state code of the seat.
+      - name: city
+        description: City of the seat, where the office is municipal.
+      - name: district
+        description: District of the seat, where the office is districted.
+      - name: party_affiliation
+        description: Party affiliation recorded on the term.
+      - name: term_start_date
+        description: Start date of the term.
+      - name: term_end_date
+        description: End date of the term.
+      - name: elected_date
+        description: The date the person was elected, as the app records it.
+      - name: sworn_in_date
+        description: The date the person was sworn in, as the app records it.
+      - name: pledged_at
+        description: When the person took the GoodParty pledge, from the app.
+      - name: onboarding_completed_at
+        description: When the person finished Serve onboarding, from the app.
+      - name: self_reported
+        description: Whether the app's record of the term came from the person themselves.
+      - name: is_appointed
+        description: Whether the seat is appointed rather than elected.
+      - name: is_judicial
+        description: Whether the office is judicial.
+      - name: is_vacant
+        description: Whether the seat is vacant.
+      - name: is_serve_icp
+        description: Whether the office is in the Serve product's ideal-customer set.
+      - name: is_win_icp
+        description: Whether the office is in the Win product's ideal-customer set.
+      - name: br_office_holder_id
+        description: BallotReady office holder id, when the term came from BallotReady.
+      - name: br_position_id
+        description: BallotReady position id, when the term came from BallotReady.
+      - name: source_systems
+        description: >
+          Where we learned about the term, mirroring the civics mart's entity-resolution
+          provenance. A HubSpot multi-checkbox property, so the values arrive joined.
+      - name: office_email
+        description: >
+          The office's email address. CRM data for the Serve sales workflow, so it stays in
+          staging and the Serve sales models and does not propagate into general-purpose marts.
+        databricks_tags:
+          sensitive: identifier
+      - name: office_phone
+        description: >
+          The office's phone number, under the same restriction as office_email.
+        databricks_tags:
+          sensitive: identifier
+      - name: hubspot_owner_id
+        description: The HubSpot owner the record is assigned to.
+      - name: created_at
+        description: When the record was created in HubSpot.
+      - name: updated_at
+        description: >
+          When HubSpot last modified the record. A link change does not move this, which is why
+          the loader sweeps rather than following it.
+      - name: contact_ids
+        description: >
+          HubSpot Contact record ids the record links to, every association type and distinct.
+          An explicit empty array when the record has no links, never a null.
+      - name: company_ids
+        description: HubSpot Company record ids the record links to, same rules as contact_ids.
+      - name: origin
+        description: >
+          Which writer created the record: `app` when gp_api_elected_office_id is set, `feed`
+          when gp_elected_official_term_id is set, `other` when neither is (a HubSpot workflow,
+          or made by hand). Every record today is `app`.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["app", "feed", "other"]
