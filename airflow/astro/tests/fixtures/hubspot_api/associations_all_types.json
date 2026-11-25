@@ -1,0 +1,31 @@
+{
+  "_comment": "Recorded fixture for POST /crm/v4/associations/meetings/contacts/batch/read. One link carries two association types for the same pair; the other carries an empty associationTypes list, which is the unlabeled link a typeId filter would drop. Both ids must survive.",
+  "results": [
+    {
+      "from": {
+        "id": "101"
+      },
+      "to": [
+        {
+          "toObjectId": 9001,
+          "associationTypes": [
+            {
+              "category": "HUBSPOT_DEFINED",
+              "typeId": 194,
+              "label": null
+            },
+            {
+              "category": "HUBSPOT_DEFINED",
+              "typeId": 195,
+              "label": null
+            }
+          ]
+        },
+        {
+          "toObjectId": 9002,
+          "associationTypes": []
+        }
+      ]
+    }
+  ]
+}

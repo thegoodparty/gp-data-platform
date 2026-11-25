@@ -1,0 +1,40 @@
+{
+  "_comment": "Recorded fixture for a 207 from POST /crm/v4/associations/tasks/contacts/batch/read. HubSpot answers 207 when some inputs had no associations, carrying results and errors together. Activity 201 links one contact; 202 has none and appears only as a NO_ASSOCIATIONS_FOUND error, which must land an explicit empty array rather than fail the run. Activity 203 is a real failure and must still raise.",
+  "completedAt": "2026-11-24T18:00:00Z",
+  "results": [
+    {
+      "from": {
+        "id": "201"
+      },
+      "to": [
+        {
+          "toObjectId": 9001,
+          "associationTypes": [
+            {
+              "category": "HUBSPOT_DEFINED",
+              "typeId": 194,
+              "label": null
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "startedAt": "2026-11-24T18:00:00Z",
+  "status": "COMPLETE",
+  "errors": [
+    {
+      "category": "VALIDATION_ERROR",
+      "context": {
+        "id": ["202"]
+      },
+      "errors": [],
+      "message": "No associations were found for the provided object ids.",
+      "status": "error",
+      "id": "202",
+      "subCategory": "crm.associations.NO_ASSOCIATIONS_FOUND"
+    }
+  ],
+  "numErrors": 1,
+  "requestedAt": "2026-11-24T18:00:00Z"
+}
