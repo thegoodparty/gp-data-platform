@@ -10,4 +10,4 @@ jobs:
     uses: ./.github/workflows/uv-subproject.yml
     with:
       directory: airflow
-      mypy-targets: astro/dags astro/tests astro/include/custom_functions
+      mypy-targets: astro/dags astro/tests astro/include/custom_functions astro/include/reader astro/include/pipelines

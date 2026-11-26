@@ -1,0 +1,36 @@
+# Which pipelines count, and what a real success means for each.
+#
+# Read at DAG parse time by include/pipelines/registry.py, so this file is data
+# and not code: the loader rejects a malformed or incomplete entry, and
+# tests/test_pipelines_registry.py loads this exact file so a typo here fails CI.
+#
+# PR 1 of DATA-2825 ships the nightly only. The Airflow and Airbyte pipelines are
+# added with their collectors in PRs 2 and 3; the schema already carries the
+# fields they need so it does not change under them.
+
+pipelines:
+  - pipeline: dbt_nightly_build
+    tool: dbt_cloud
+    display_name: dbt Cloud nightly production build
+    owner: data-engineering
+    # 00:02 and 12:02 UTC. The build takes 95-105 minutes, so a run due at 12:02
+    # is not late until well after this reader would first look at it.
+    schedule: "2 */12 * * *"
+    # 26h, not 24h: a run due at 12:02 that finished late is still the latest
+    # success a reader looking at 11:00 the next day should count.
+    allowed_age_hours: 26
+    real_success:
+      status: run_status_success
+      # A manual run may be a partial or targeted build, so it does not count as
+      # recovery: only the scheduled build does. The cost is that a hand-fixed
+      # nightly clears its alert at the next scheduled run, at most 12h later.
+      trigger: scheduled
+    # The two finance checks. A warn on either is rule 1's watched-warning half;
+    # nothing else reads them.
+    watched_warnings:
+      - assert_stripe_pro_subscriptions_match_campaigns
+      - assert_no_duplicate_paid_p2p_sends
+    depends_on: []
+    runbook: https://github.com/thegoodparty/gp-data-platform/blob/main/airflow/astro/docs/data_pipeline_reader.md
+    tool_ids:
+      job_id: 70471823431462
